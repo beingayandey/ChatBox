@@ -1,35 +1,42 @@
 import React, { useState } from "react";
 import { useToast } from "./contexts/ToastNotification";
 import Loader from "./ButtonLoader";
-import { auth, provider } from "../firebase";
+import { auth, db, provider } from "../firebase";
 import { signInWithPopup } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { loginSuccess } from "../store/slices/authSlice";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 const GoogleLoginButton = ({ redirectTo = "/dashboard" }) => {
   const { showSuccess, showError } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const dispatch = useDispatch(); // Add this line to define dispatch
+  const dispatch = useDispatch();
 
   const handleGoogleSignIn = async () => {
-    console.log("[GoogleLoginButton] Initiating Google Sign-In");
+    console.log("Starting Google Sign-In...");
     setIsLoading(true);
     try {
-      console.log("[GoogleLoginButton] Calling signInWithPopup");
+      console.log("Connecting to Google...");
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      console.log("[GoogleLoginButton] Sign-In successful, user:", {
-        uid: user.uid,
+      console.log(`Signed in! User: ${user.displayName}, Email: ${user.email}`);
+
+      // Save user info to Firestore
+      console.log("Saving user info to database...");
+      await setDoc(doc(db, "users", user.uid), {
         displayName: user.displayName,
         email: user.email,
+        photoURL: user.photoURL,
+        createdAt: serverTimestamp(),
       });
 
+      console.log("Getting user token...");
       const token = await user.getIdToken();
-      console.log("[GoogleLoginButton] Firebase ID Token received:", token);
+      console.log("Token received!");
 
-      console.log("[GoogleLoginButton] Dispatching loginSuccess action");
+      console.log("Updating app with user info...");
       dispatch(
         loginSuccess({
           user: {
@@ -43,21 +50,16 @@ const GoogleLoginButton = ({ redirectTo = "/dashboard" }) => {
         })
       );
 
-      console.log("[GoogleLoginButton] Showing success toast");
+      console.log(`Showing welcome message for ${user.displayName}`);
       showSuccess(`Welcome, ${user.displayName}!`);
 
-      console.log("[GoogleLoginButton] Navigating to:", redirectTo);
+      console.log(`Redirecting to ${redirectTo}...`);
       navigate(redirectTo);
     } catch (error) {
-      console.error("[GoogleLoginButton] Google Sign-In Error:", {
-        message: error.message,
-        code: error.code,
-      });
+      console.log(`Error during Sign-In: ${error.message}`);
       showError(`Google Sign-In Error: ${error.message}`);
     } finally {
-      console.log(
-        "[GoogleLoginButton] Sign-In process complete, setting isLoading to false"
-      );
+      console.log("Sign-In process finished.");
       setIsLoading(false);
     }
   };

@@ -377,7 +377,41 @@ li {
 .search-drop-down-inner li:last-child a {
   border-bottom: none;
 }
+.text-center {
+  text-align: center;
+}
+.welcome-cont h1 {
+  margin-bottom: 20px;
+}
+.welcome-cont p {
+  line-height: 2;
+}
+.welcome-btn {
+  margin-top: 2rem;
+  display: flex;
+  color: var(--disbale-function-bg);
+  justify-content: center;
+  align-items: center;
+  padding: 0px;
+  gap: 10px;
+  max-width: 327px;
+  width: 100%;
+  height: 63px;
+  background: var(--balck-variant-one);
+  border-radius: 16px;
+  font-family: var(--secondary-font-family);
+  font-weight: 600;
+  text-transform: capitalize;
+  letter-spacing: 1px;
+  margin-inline: auto;
+}
 @media screen and (max-width: 480px) {
+  .welcome-btn {
+    max-height: 50px;
+    border-radius: 50px;
+    height: 50px;
+    max-width: 100%;
+  }
   .left-back,
   .right-back {
     width: 30px;
