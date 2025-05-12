@@ -6,6 +6,7 @@ import WelcomeHome from "../pages/WelcomeHome";
 import UsersPage from "../pages/UsersPage";
 import Header from "../components/Header";
 import ChatPage from "../pages/ChatPage";
+import ProtectedRoute from "../components/ProtectedRoute";
 
 const MainLayouts = () => {
   return (
@@ -16,9 +17,24 @@ const MainLayouts = () => {
           <div className="main-body-outer">
             <Routes>
               <Route path="/welcome" element={<WelcomeHome />} />
-              <Route path="/dashboard" element={<UsersPage />} />
               <Route path="/" element={<Login />} />
-              <Route path="/chat/:userId" element={<ChatPage />} />
+
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <UsersPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/chat/:userId"
+                element={
+                  <ProtectedRoute>
+                    <ChatPage />
+                  </ProtectedRoute>
+                }
+              />
             </Routes>
           </div>
         </BrowserRouter>
