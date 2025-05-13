@@ -10,15 +10,17 @@ const UsersPage = ({ searchQuery }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Set up the auth state listener
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      // If no user is logged in, clear state and stop
       if (!currentUser) {
         setUsers([]);
         setLoading(false);
         return;
       }
 
-      console.log("UserPage is rendered");
-
+      // User is logged in, set up the Firestore snapshot listener
+      setLoading(true);
       const usersRef = collection(db, "users");
       let q = usersRef;
 
@@ -45,18 +47,22 @@ const UsersPage = ({ searchQuery }) => {
             setLoading(false);
           } catch (error) {
             console.error("Error fetching users:", error);
+            setUsers([]);
             setLoading(false);
           }
         },
         (error) => {
-          console.error("Snapshot error:", error);
+          console.error("Snapshot error:", error); // Line 55
+          setUsers([]);
           setLoading(false);
         }
       );
 
+      // Return the cleanup function for the snapshot listener
       return () => unsubscribeSnapshot();
     });
 
+    // Cleanup the auth listener on unmount
     return () => unsubscribeAuth();
   }, [searchQuery]);
 
@@ -66,11 +72,15 @@ const UsersPage = ({ searchQuery }) => {
     });
   };
 
+  if (!auth.currentUser) {
+    return <p className="loading-text">Please log in to view users.</p>;
+  }
+
   if (loading) return <p className="loading-text">Loading users...</p>;
 
   return (
     <div className="users-page">
-      <h2 className="users-page__title">Chats</h2>
+      <h2 className="users-page__title">Contacts</h2>
       <ul className="users-page__list">
         {users.length > 0 ? (
           users.map((user) => (
@@ -80,7 +90,12 @@ const UsersPage = ({ searchQuery }) => {
               className="user-card"
             >
               <img
-                src={user.photoURL || "https://via.placeholder.com/40"}
+                src={
+                  user.photoURL ||
+                  `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                    user.displayName || "User"
+                  )}&size=40&rounded=true&background=random`
+                }
                 alt={user.displayName}
                 className="user-card__avatar"
               />

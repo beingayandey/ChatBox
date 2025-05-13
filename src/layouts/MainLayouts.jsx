@@ -1,10 +1,11 @@
 import { Route, Routes, useLocation } from "react-router-dom";
 
 import Login from "../pages/Login";
-import UsersPage from "../pages/UsersPage";
+
 import ChatPage from "../pages/ChatPage";
 import Header from "../components/Header";
 import { ToastProvider } from "../components/contexts/ToastNotification";
+import Dashboard from "../pages/Dashboard";
 
 const MainLayouts = () => {
   const location = useLocation();
@@ -15,8 +16,8 @@ const MainLayouts = () => {
       {!isLoginPage && <Header />}
       <div className="main-body-outer">
         <Routes>
-          <Route path="/" element={<UsersPage />} />
-          <Route path="/dashboard" element={<UsersPage />} />
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
 
           <Route path="/login" element={<Login />} />
 

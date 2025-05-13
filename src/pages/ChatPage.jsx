@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useParams, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import {
   createChat,
@@ -9,8 +9,9 @@ import {
   deleteMessage,
   markMessagesAsRead,
 } from "../firebase";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase";
+import { doc, onSnapshot, getDoc } from "firebase/firestore";
+import { db, auth } from "../firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 const ChatPage = () => {
   const { userId } = useParams();
@@ -25,11 +26,14 @@ const ChatPage = () => {
       prev.user === next.user && prev.isAuthenticated === next.isAuthenticated
   );
 
+  const navigate = useNavigate();
   const chatContainerRef = useRef(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [chatId, setChatId] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
+  const messagesUnsubscribeRef = useRef(null);
+  const typingUnsubscribeRef = useRef(null);
 
   const generateChatId = () => {
     if (!user || !userId) {
@@ -39,34 +43,57 @@ const ChatPage = () => {
     return `chat_${participants[0]}_${participants[1]}`;
   };
 
+  // Monitor authentication state and clean up listeners on logout
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      if (!currentUser || !isAuthenticated) {
+        if (messagesUnsubscribeRef.current) {
+          messagesUnsubscribeRef.current();
+          messagesUnsubscribeRef.current = null;
+        }
+        if (typingUnsubscribeRef.current) {
+          typingUnsubscribeRef.current();
+          typingUnsubscribeRef.current = null;
+        }
+        setMessages([]);
+        setChatId(null);
+        setIsTyping(false);
+        navigate("/login");
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, [navigate, isAuthenticated]);
+
+  // Check for existing chat on load
   useEffect(() => {
     if (!isAuthenticated || !user || !userId) {
       return;
     }
 
-    const initializeChat = async () => {
+    const checkChat = async () => {
       const generatedChatId = generateChatId();
+      if (!generatedChatId) return; // Fix: Use generatedChatId instead of datasetChatId
 
-      if (!generatedChatId) return;
+      // Check if chat exists without creating it
+      const chatRef = doc(db, "storedChats", generatedChatId);
+      const chatDoc = await getDoc(chatRef);
 
-      try {
-        await createChat(user.uid, userId);
+      if (chatDoc.exists()) {
         setChatId(generatedChatId);
-      } catch (error) {
-        console.error("Error initializing chat:", error);
       }
     };
 
-    initializeChat().catch((error) => {
-      console.error("Error in initializeChat:", error);
+    checkChat().catch((error) => {
+      console.error("Error checking chat:", error);
     });
   }, [user?.uid, userId, isAuthenticated]);
 
+  // Fetch messages and mark as read
   useEffect(() => {
-    if (!chatId) {
+    if (!chatId || !isAuthenticated) {
       return;
     }
-    console.log("ChatPage is rendered");
 
     const unsubscribe = fetchMessages(chatId, (fetchedMessages) => {
       setMessages(fetchedMessages);
@@ -77,11 +104,19 @@ const ChatPage = () => {
       }
     });
 
-    return () => unsubscribe();
-  }, [chatId, user?.uid]);
+    messagesUnsubscribeRef.current = unsubscribe;
 
+    return () => {
+      if (messagesUnsubscribeRef.current) {
+        messagesUnsubscribeRef.current();
+        messagesUnsubscribeRef.current = null;
+      }
+    };
+  }, [chatId, user?.uid, isAuthenticated]);
+
+  // Monitor typing status
   useEffect(() => {
-    if (!chatId) {
+    if (!chatId || !isAuthenticated) {
       return;
     }
 
@@ -95,9 +130,17 @@ const ChatPage = () => {
       setIsTyping(data.typing?.[otherUserId] || false);
     });
 
-    return () => unsubscribe();
-  }, [chatId, user?.uid]);
+    typingUnsubscribeRef.current = unsubscribe;
 
+    return () => {
+      if (typingUnsubscribeRef.current) {
+        typingUnsubscribeRef.current();
+        typingUnsubscribeRef.current = null;
+      }
+    };
+  }, [chatId, user?.uid, isAuthenticated]);
+
+  // Auto-scroll to latest message
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop =
@@ -111,13 +154,26 @@ const ChatPage = () => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  // Send message and create chat if needed
   const handleSendMessage = async () => {
-    if (!newMessage || !chatId || !isAuthenticated) {
+    if (!newMessage || !isAuthenticated || !user || !userId) {
       return;
     }
 
     try {
-      await sendMessage(chatId, user.uid, newMessage);
+      let currentChatId = chatId;
+
+      // If no chatId, create chat
+      if (!currentChatId) {
+        currentChatId = generateChatId();
+        if (currentChatId) {
+          await createChat(user.uid, userId);
+          setChatId(currentChatId);
+        }
+      }
+
+      // Send message
+      await sendMessage(currentChatId, user.uid, newMessage);
       setNewMessage("");
     } catch (error) {
       console.error("Error sending message:", error);
@@ -125,7 +181,7 @@ const ChatPage = () => {
   };
 
   const handleTyping = async () => {
-    if (!chatId || !user) {
+    if (!chatId || !user || !isAuthenticated) {
       return;
     }
     await setTypingStatus(chatId, user.uid, true);
@@ -133,7 +189,7 @@ const ChatPage = () => {
   };
 
   const handleDeleteMessage = async (messageId) => {
-    if (!chatId) {
+    if (!chatId || !isAuthenticated) {
       return;
     }
     try {
