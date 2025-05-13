@@ -16,11 +16,9 @@ const MainLayouts = () => {
       {!isLoginPage && <Header />}
       <div className="main-body-outer">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Login />} />
           <Route path="/dashboard" element={<Dashboard />} />
-
           <Route path="/login" element={<Login />} />
-
           <Route
             path="/chat/:userId"
             element={
