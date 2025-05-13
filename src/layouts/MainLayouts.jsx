@@ -9,7 +9,8 @@ import Dashboard from "../pages/Dashboard";
 
 const MainLayouts = () => {
   const location = useLocation();
-  const isLoginPage = location.pathname === "/login";
+  const isLoginPage =
+    location.pathname === "/login" || location.pathname === "/";
 
   return (
     <ToastProvider>
