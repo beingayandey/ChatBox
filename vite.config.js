@@ -8,4 +8,7 @@ export default defineConfig({
     host: true,
     port: 3000,
   },
+  build: {
+    assetsInclude: ["**/*.svg"], // Ensure SVG files are treated as assets
+  },
 });
