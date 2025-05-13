@@ -15,16 +15,13 @@ const GoogleLoginButton = ({ redirectTo = "/dashboard" }) => {
   const dispatch = useDispatch();
 
   const handleGoogleSignIn = async () => {
-    console.log("Starting Google Sign-In...");
     setIsLoading(true);
     try {
-      console.log("Connecting to Google...");
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      console.log(`Signed in! User: ${user.displayName}, Email: ${user.email}`);
 
       // Save user info to Firestore
-      console.log("Saving user info to database...");
+
       await setDoc(doc(db, "users", user.uid), {
         displayName: user.displayName,
         email: user.email,
@@ -32,11 +29,8 @@ const GoogleLoginButton = ({ redirectTo = "/dashboard" }) => {
         createdAt: serverTimestamp(),
       });
 
-      console.log("Getting user token...");
       const token = await user.getIdToken();
-      console.log("Token received!");
 
-      console.log("Updating app with user info...");
       dispatch(
         loginSuccess({
           user: {
@@ -50,16 +44,12 @@ const GoogleLoginButton = ({ redirectTo = "/dashboard" }) => {
         })
       );
 
-      console.log(`Showing welcome message for ${user.displayName}`);
       showSuccess(`Welcome, ${user.displayName}!`);
 
-      console.log(`Redirecting to ${redirectTo}...`);
       navigate(redirectTo);
     } catch (error) {
-      console.log(`Error during Sign-In: ${error.message}`);
       showError(`Google Sign-In Error: ${error.message}`);
     } finally {
-      console.log("Sign-In process finished.");
       setIsLoading(false);
     }
   };

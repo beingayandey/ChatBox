@@ -15,19 +15,31 @@
   --paragraph-color-one: #acadb9;
   --primary-font-family: "Urbanist", sans-serif;
   --secondary-font-family: "Poppins", sans-serif;
-
-  /* New chat-specific variables for theming */
-  --chat-bg: #f5f5f5; /* Background for chat area */
-  --chat-header-bg: var(--primary-white); /* Header background */
-  --chat-footer-bg: var(--primary-white); /* Footer background */
-  --user-chat-bg: var(--primary-white); /* User chat bubble background */
-  --my-chat-bg: #e3f2fd; /* My chat bubble background */
-  --chat-text-color: #424242; /* Chat message text color */
-  --chat-input-bg: #f5f5f5; /* Input background */
-  --chat-input-focus-bg: var(--primary-white); /* Input background on focus */
-  --chat-send-btn-bg: var(--signup-btn-bg); /* Send button background */
-  --chat-send-btn-hover-bg: #7c4dff; /* Send button hover background */
-  --chat-send-btn-active-bg: #651fff; /* Send button active background */
+  --chat-bg: #f5f5f5;
+  --chat-header-bg: var(--primary-white);
+  --chat-footer-bg: var(--primary-white);
+  --user-chat-bg: var(--primary-white);
+  --my-chat-bg: #e3f2fd;
+  --chat-text-color: #424242;
+  --chat-input-bg: #f5f5f5;
+  --chat-input-focus-bg: var(--primary-white);
+  --chat-send-btn-bg: var(--signup-btn-bg);
+  --chat-send-btn-hover-bg: #7c4dff;
+  --chat-send-btn-active-bg: #651fff;
+  /* Material Design Additions */
+  --card-bg: var(--primary-white);
+  --card-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  --card-shadow-hover: 0 4px 10px rgba(0, 0, 0, 0.15);
+  --accent-color: #0288d1; /* Material blue for hover/accents */
+  --border-color: #e0e0e0;
+  /* New variables for dropdown-specific styling */
+  --dropdown-bg: var(--card-bg);
+  --dropdown-border: var(--border-color);
+  --dropdown-shadow: var(--card-shadow);
+  --dropdown-hover-bg: var(
+    --my-chat-bg
+  ); /* Light blue for hover, consistent with chat theme */
+  --dropdown-text-color: var(--primary-font-color);
 }
 
 * {
@@ -677,30 +689,188 @@ li {
   display: flex;
 }
 .header-avatar-container {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e4e7eb 100%);
+  cursor: pointer;
+  padding: 8px;
   border-radius: 20px;
-  padding: 4px 12px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.2s ease-in-out;
+}
+
+.header-avatar-container:hover {
+  background-color: var(
+    --my-chat-bg
+  ); /* Subtle hover effect using chat background */
 }
 
 .avatar-image {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid var(--primary-white);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  margin-right: 8px;
 }
 
 .avatar-name {
-  font-size: 14px;
+  font-size: calc(var(--font-size-base) * 0.875); /* 14px */
   font-weight: 500;
-  color: #333;
-  font-family: "Segoe UI", sans-serif;
-  text-transform: capitalize;
+  color: var(--primary-font-color);
+  font-family: var(--primary-font-family);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: var(--dropdown-bg);
+  border: 1px solid var(--dropdown-border);
+  border-radius: 8px;
+  box-shadow: var(--dropdown-shadow);
+  min-width: 160px;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out; /* Grok-like smooth transition */
+  z-index: 1000;
+}
+
+.header-avatar-container.active .dropdown-menu,
+.dropdown-menu.active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  color: var(--dropdown-text-color);
+  font-size: calc(var(--font-size-base) * 0.875); /* 14px */
+  font-family: var(--primary-font-family);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.dropdown-item:hover {
+  background-color: var(--dropdown-hover-bg); /* Light blue hover effect */
+}
+
+.dropdown-item .logout-icon {
+  margin-right: 8px;
+  font-size: calc(var(--font-size-base) * 1); /* 16px */
+  color: var(--dropdown-text-color);
+}
+
+/* Ensure header-right aligns elements properly */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Style for the three-dots option button */
+.option-button .right-back {
+  background: none;
+  border: none;
+  color: var(--primary-font-color);
+  font-size: calc(var(--font-size-base) * 1.25); /* 20px */
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.option-button .right-back:hover {
+  background-color: var(--my-chat-bg);
+}
+/* Ensure dropdown doesn't interfere with other header elements */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Optional: Adjust option-button to align with the new layout */
+.option-button .right-back {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease-in-out;
+}
+.option-button .right-back:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.typing-indicator {
+  position: relative;
+  display: inline-block; /* Ensures the element wraps tightly around the content */
+  font-size: 1rem;
+  color: #333; /* Darker text color for contrast */
+  background-color: #e6f0fa; /* Light blue background for the cloud */
+  padding: 8px 16px; /* Padding inside the cloud */
+  margin: 10px 0 10px 20px; /* Margin to position it, with extra left margin for the tail */
+  border-radius: 20px; /* Rounded corners for a cloud-like shape */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+  font-family: Arial, sans-serif;
+  max-width: 70%; /* Prevent the cloud from becoming too wide */
+  width: max-content;
+}
+
+/* Add a small "tail" to the cloud using a pseudo-element */
+.typing-indicator::after {
+  content: "";
+  position: absolute;
+  left: -10px; /* Position the tail to the left of the cloud */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-right: 10px solid #e6f0fa; /* Matches the background color of the cloud */
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+}
+
+/* Ellipsis animation (unchanged from previous solution) */
+.ellipsis {
+  display: inline-block;
+  position: relative;
+  width: 1.5em;
+  text-align: left;
+}
+
+.ellipsis span {
+  display: inline-block;
+  opacity: 0;
+  animation: ellipsis-dot 1.5s infinite;
+}
+
+.ellipsis span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.ellipsis span:nth-child(2) {
+  animation-delay: 0.3s;
+}
+
+.ellipsis span:nth-child(3) {
+  animation-delay: 0.6s;
+}
+
+@keyframes ellipsis-dot {
+  0% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 /* Responsive Design */
 @media (max-width: 600px) {
@@ -718,12 +888,115 @@ li {
     font-size: 14px;
   }
 }
+.delete-btn {
+  margin-left: 10px;
+  background: #ff4d4d;
+  color: white;
+  border: none;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.delete-btn:hover {
+  background: #e60000;
+}
+
+.chat-list p {
+  font-style: italic;
+  color: #888;
+  margin: 5px 0;
+}
+.users-page {
+  background-color: var(--chat-bg);
+  min-height: 100vh;
+  font-family: var(--primary-font-family);
+}
+
+.users-page__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--primary-font-color);
+  margin-bottom: 1.5rem;
+  font-family: var(--secondary-font-family);
+}
+
+.users-page__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.user-card {
+  display: flex;
+  align-items: center;
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.user-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--card-shadow-hover);
+}
+
+.user-card:active {
+  transform: translateY(0);
+  box-shadow: var(--card-shadow);
+}
+
+.user-card__avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 1rem;
+  border: 1px solid var(--border-color);
+}
+
+.user-card__info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.user-card__name {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--primary-font-color);
+  margin: 0;
+}
+
+.user-card__email {
+  font-size: 0.875rem;
+  color: var(--paragraph-color-one);
+  margin: 0;
+  margin-top: 0.25rem;
+}
+
+.loading-text {
+  font-size: 1rem;
+  color: var(--secondary-color);
+  text-align: center;
+  padding: 1.5rem;
+  font-family: var(--primary-font-family);
+}
 @media screen and (max-width: 480px) {
   .welcome-btn {
     max-height: 50px;
     border-radius: 50px;
     height: 50px;
     max-width: 100%;
+  }
+  .header-avatar-container {
+    padding: 0;
+  }
+  .header-avatar-container .avatar-name {
+    display: none;
   }
   .left-back,
   .right-back {

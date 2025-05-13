@@ -1,32 +1,64 @@
 import React, { useEffect, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../firebase";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { db, auth } from "../firebase";
 import { useNavigate } from "react-router-dom";
+import { onAuthStateChanged } from "firebase/auth";
 
-const UsersPage = () => {
+const UsersPage = ({ searchQuery }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const usersRef = collection(db, "users");
-        const snapshot = await getDocs(usersRef);
-        const usersList = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setUsers(usersList);
-      } catch (error) {
-        console.error("Error fetching users:", error);
-      } finally {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      if (!currentUser) {
+        setUsers([]);
         setLoading(false);
+        return;
       }
-    };
 
-    fetchUsers();
-  }, []);
+      console.log("UserPage is rendered");
+
+      const usersRef = collection(db, "users");
+      let q = usersRef;
+
+      if (searchQuery) {
+        const lowerQuery = searchQuery.toLowerCase();
+        q = query(
+          usersRef,
+          where("displayNameLower", ">=", lowerQuery),
+          where("displayNameLower", "<=", lowerQuery + "\uf8ff")
+        );
+      }
+
+      const unsubscribeSnapshot = onSnapshot(
+        q,
+        (snapshot) => {
+          try {
+            const usersList = snapshot.docs
+              .map((doc) => ({
+                id: doc.id,
+                ...doc.data(),
+              }))
+              .filter((user) => user.id !== currentUser.uid);
+            setUsers(usersList);
+            setLoading(false);
+          } catch (error) {
+            console.error("Error fetching users:", error);
+            setLoading(false);
+          }
+        },
+        (error) => {
+          console.error("Snapshot error:", error);
+          setLoading(false);
+        }
+      );
+
+      return () => unsubscribeSnapshot();
+    });
+
+    return () => unsubscribeAuth();
+  }, [searchQuery]);
 
   const goToChat = (userId, photoURL, displayName) => {
     navigate(`/chat/${userId}`, {
@@ -34,32 +66,33 @@ const UsersPage = () => {
     });
   };
 
-  if (loading) return <p>Loading users...</p>;
+  if (loading) return <p className="loading-text">Loading users...</p>;
 
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold mb-4">Registered Users</h2>
-      <ul className="space-y-4">
-        {users.map((user) => {
-          console.log(user.photoURL);
-          return (
+    <div className="users-page">
+      <h2 className="users-page__title">Chats</h2>
+      <ul className="users-page__list">
+        {users.length > 0 ? (
+          users.map((user) => (
             <li
               key={user.id}
               onClick={() => goToChat(user.id, user.photoURL, user.displayName)}
-              className="border p-3 rounded shadow-md pointer hover:bg-gray-100 transition"
+              className="user-card"
             >
               <img
-                src={user.photoURL}
+                src={user.photoURL || "https://via.placeholder.com/40"}
                 alt={user.displayName}
-                className="w-10 h-10 rounded-full inline-block mr-2"
+                className="user-card__avatar"
               />
-              <div className="inline-block align-middle">
-                <p className="font-semibold">{user.displayName}</p>
-                <p className="text-sm text-gray-600">{user.email}</p>
+              <div className="user-card__info">
+                <p className="user-card__name">{user.displayName}</p>
+                <p className="user-card__email">{user.email}</p>
               </div>
             </li>
-          );
-        })}
+          ))
+        ) : (
+          <p>No users found</p>
+        )}
       </ul>
     </div>
   );

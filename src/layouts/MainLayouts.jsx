@@ -1,45 +1,38 @@
-import React from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
+
 import Login from "../pages/Login";
-import { ToastProvider } from "../components/contexts/ToastNotification";
-import WelcomeHome from "../pages/WelcomeHome";
 import UsersPage from "../pages/UsersPage";
-import Header from "../components/Header";
 import ChatPage from "../pages/ChatPage";
-import ProtectedRoute from "../components/ProtectedRoute";
+import Header from "../components/Header";
+import { ToastProvider } from "../components/contexts/ToastNotification";
 
 const MainLayouts = () => {
-  return (
-    <>
-      <ToastProvider>
-        <BrowserRouter>
-          <Header />
-          <div className="main-body-outer">
-            <Routes>
-              <Route path="/welcome" element={<WelcomeHome />} />
-              <Route path="/" element={<Login />} />
+  const location = useLocation();
+  const isLoginPage = location.pathname === "/login";
 
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <UsersPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/chat/:userId"
-                element={
-                  <ProtectedRoute>
-                    <ChatPage />
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
-          </div>
-        </BrowserRouter>
-      </ToastProvider>
-    </>
+  return (
+    <ToastProvider>
+      {!isLoginPage && <Header />}
+      <div className="main-body-outer">
+        <Routes>
+          <Route path="/" element={<UsersPage />} />
+          <Route path="/dashboard" element={<UsersPage />} />
+
+          <Route path="/login" element={<Login />} />
+
+          <Route
+            path="/chat/:userId"
+            element={
+              <div className="app-layout">
+                <div className="main-content">
+                  <ChatPage />
+                </div>
+              </div>
+            }
+          />
+        </Routes>
+      </div>
+    </ToastProvider>
   );
 };
 

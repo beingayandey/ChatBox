@@ -1,18 +1,21 @@
 import React from "react";
 import MainLayouts from "./layouts/MainLayouts";
 import { Provider } from "react-redux";
-import { store, persistor } from "./store/store"; // <-- updated
+import { store, persistor } from "./store/store";
 import AuthListener from "./components/AuthListener";
-import { PersistGate } from "redux-persist/integration/react"; // <-- added
+import { PersistGate } from "redux-persist/integration/react";
+import { BrowserRouter } from "react-router-dom"; // ✅ import BrowserRouter
 
 const App = () => {
   return (
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
-        <AuthListener />
-        <div className="main-body">
-          <MainLayouts />
-        </div>
+        <BrowserRouter>
+          <AuthListener />
+          <div className="main-body">
+            <MainLayouts />
+          </div>
+        </BrowserRouter>
       </PersistGate>
     </Provider>
   );

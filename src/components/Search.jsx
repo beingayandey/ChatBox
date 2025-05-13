@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { CiSearch } from "react-icons/ci";
 import { Link } from "react-router-dom";
 
-const Search = () => {
+const Search = ({ onSearch }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const wrapperRef = useRef(null);
@@ -10,7 +10,8 @@ const Search = () => {
   const handleSearch = (e) => {
     const query = e.target.value;
     setSearchQuery(query);
-    setIsDropdownOpen(!!query); // Open only if query has content
+    setIsDropdownOpen(!!query);
+    onSearch(query); // Pass query to parent
   };
 
   const handleClickOutside = (event) => {
@@ -32,24 +33,19 @@ const Search = () => {
         </div>
         <input
           type="text"
-          placeholder="Search"
+          placeholder="Search users"
           value={searchQuery}
           onChange={handleSearch}
         />
       </div>
-
       {isDropdownOpen && (
         <div className="search-drop-down">
           <div className="search-drop-down-inner">
             <ul>
               {searchQuery ? (
-                Array.from({ length: 10 }).map((_, i) => (
-                  <li key={i}>
-                    <Link to={`/result/${i}`}>
-                      Result {i + 1} for "{searchQuery}"
-                    </Link>
-                  </li>
-                ))
+                <li style={{ padding: "10px 15px" }}>
+                  Searching for "{searchQuery}"...
+                </li>
               ) : (
                 <li style={{ padding: "10px 15px" }}>No results found</li>
               )}

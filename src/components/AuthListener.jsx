@@ -9,17 +9,11 @@ const AuthListener = () => {
   const dispatch = useDispatch();
 
   useEffect(() => {
-    console.log("[AuthListener] Setting up onAuthStateChanged listener");
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
           const token = await user.getIdToken();
-          console.log(
-            "[AuthListener] User signed in:",
-            user.uid,
-            "Token:",
-            token
-          );
+
           dispatch(
             loginSuccess({
               user: {
@@ -37,13 +31,11 @@ const AuthListener = () => {
           dispatch(logout());
         }
       } else {
-        console.log("[AuthListener] No user signed in");
         dispatch(logout());
       }
     });
 
     return () => {
-      console.log("[AuthListener] Cleaning up onAuthStateChanged listener");
       unsubscribe();
     };
   }, [dispatch]);

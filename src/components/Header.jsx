@@ -1,21 +1,20 @@
-import React from "react";
+import React, { useState } from "react";
 import { IoChevronBack } from "react-icons/io5";
-import { BsThreeDots } from "react-icons/bs";
 import { MdLogout } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { signOut } from "firebase/auth";
-import { auth } from "../firebase"; // make sure path is correct
+import { auth } from "../firebase";
 import { logout } from "../store/slices/authSlice";
 import Search from "./Search";
-import { useLocation } from "react-router-dom";
+import UsersPage from "../pages/UsersPage";
 
 const Header = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
-  const location = useLocation();
-  const isLoginPage = location.pathname === "/login";
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
   const handleBack = () => {
     navigate(-1);
   };
@@ -24,46 +23,48 @@ const Header = () => {
     try {
       await signOut(auth);
       dispatch(logout());
-      navigate("/");
+      navigate("/login");
     } catch (error) {
       console.error("Logout failed:", error.message);
     }
   };
 
+  const toggleDropdown = () => {
+    setIsDropdownOpen(!isDropdownOpen);
+  };
+
   return (
-    <>
+    <div>
       <div className="outer-header">
         <div className="left-back" onClick={handleBack}>
           <IoChevronBack />
         </div>
-        {user && !isLoginPage && (
-          <div className="header-avatar-container">
-            <img
-              src={user.photoURL || "https://via.placeholder.com/40"}
-              alt={user.displayName || "User Avatar"}
-              className="avatar-image"
-              title={user.displayName}
-            />
-            <span className="avatar-name">{user.displayName || "User"}</span>
-          </div>
-        )}
         <div className="header-middle">
           <Search />
         </div>
         <div className="header-right">
           {user && (
-            <button className="logout-button" onClick={handleLogout}>
-              <MdLogout className="logout-icon" />
-            </button>
+            <div className="header-avatar-container" onClick={toggleDropdown}>
+              <img
+                src={user.photoURL || "https://via.placeholder.com/40"}
+                alt={user.displayName || "User Avatar"}
+                className="avatar-image"
+                title={user.displayName}
+              />
+              <span className="avatar-name">{user.displayName || "User"}</span>
+              {isDropdownOpen && (
+                <div className="dropdown-menu">
+                  <button className="dropdown-item">Settings</button>
+                  <button className="dropdown-item" onClick={handleLogout}>
+                    <MdLogout className="logout-icon" /> Logout
+                  </button>
+                </div>
+              )}
+            </div>
           )}
-          <div className="option-button">
-            <button className="right-back">
-              <BsThreeDots />
-            </button>
-          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
