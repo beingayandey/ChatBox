@@ -36,17 +36,47 @@ const provider = new GoogleAuthProvider();
 export const db = getFirestore(app);
 
 // Function to create a new chat between two users
+// Function to create a new chat between two users
 export const createChat = async (participant1Id, participant2Id) => {
   try {
     const participants = [participant1Id, participant2Id].sort();
     const chatId = `chat_${participants[0]}_${participants[1]}`;
     const chatRef = doc(db, "storedChats", chatId);
 
+    // Fetch user details for both participants
+    const participantDetails = {};
+    for (const userId of participants) {
+      const userRef = doc(db, "users", userId);
+      const userDoc = await getDoc(userRef);
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        participantDetails[userId] = {
+          displayName: userData.displayName || "Unknown User",
+          photoURL: userData.photoURL || "",
+        };
+      } else {
+        // Fallback to Firebase Auth if user document doesn't exist
+        const user =
+          auth.currentUser && auth.currentUser.uid === userId
+            ? auth.currentUser
+            : null;
+        participantDetails[userId] = {
+          displayName: user?.displayName || "Unknown User",
+          photoURL: user?.photoURL || "",
+        };
+      }
+    }
+
+    // Create the chat document with the complete schema
     await setDoc(chatRef, {
       participants,
+      participantDetails,
       lastMessage: "",
       lastUpdated: serverTimestamp(),
-      typing: {}, // Initialize typing field
+      typing: {
+        [participant1Id]: false,
+        [participant2Id]: false,
+      },
     });
 
     return chatId;
