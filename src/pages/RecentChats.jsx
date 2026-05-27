@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { fetchChats, togglePinChat, deleteChatCompletely, markMessagesAsDelivered, db } from "../firebase"; // Import directly from Firebase utilities
 import { setChats } from "../store/slices/chatSlice"; // Import action to update chats in Redux store
-import { doc, getDoc, onSnapshot } from "firebase/firestore"; // Firestore functions
+import { doc, getDoc, onSnapshot, collection, query, where } from "firebase/firestore"; // Firestore functions
 import { useNavigate } from "react-router-dom"; // Hook for navigation
 import { BsPinAngle, BsPinFill, BsTrash } from "react-icons/bs"; // Pinned chat and trash icons
 
@@ -26,6 +26,9 @@ const RecentChats = () => {
   // State to store Firestore profile of current user (for real-time pinned/unread updates)
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
 
+  // Custom Local Nicknames state
+  const [customNicknames, setCustomNicknames] = useState({});
+
   // Ref to store the unsubscribe function for the Firebase listener
   const unsubscribeRef = useRef(null);
 
@@ -42,6 +45,31 @@ const RecentChats = () => {
         },
         (err) => {
           console.error("Error watching user profile:", err);
+        }
+      );
+      return () => unsubscribe();
+    }
+  }, [user?.uid]);
+
+  // Sync custom local nicknames in real-time
+  useEffect(() => {
+    if (user?.uid) {
+      const q = query(
+        collection(db, "customNicknames"),
+        where("ownerUid", "==", user.uid)
+      );
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const nicknameMap = {};
+          snapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            nicknameMap[data.targetUid] = data.nickname;
+          });
+          setCustomNicknames(nicknameMap);
+        },
+        (err) => {
+          console.error("Error watching custom nicknames:", err);
         }
       );
       return () => unsubscribe();
@@ -234,6 +262,7 @@ const RecentChats = () => {
             const isPinned = pinnedChatsList.includes(chat.id);
             const isUnread = unreadChatsList.includes(chat.id);
             const userOnline = isOnline(participant.lastActive);
+            const cardDisplayName = customNicknames[otherParticipantId] || participant.displayName || "Unknown User";
 
             return (
               // Chat item (clickable to navigate to ChatPage)
@@ -246,7 +275,7 @@ const RecentChats = () => {
                   handleChatClick(
                     otherParticipantId,
                     participant.photoURL,
-                    participant.displayName
+                    cardDisplayName
                   )
                 }
               >
@@ -257,10 +286,10 @@ const RecentChats = () => {
                       participant.photoURL ||
                       // Fallback to a generated avatar if no photoURL
                       `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                        participant.displayName || "User"
+                        cardDisplayName
                       )}&size=40&rounded=true&background=random`
                     }
-                    alt={participant.displayName || "User"}
+                    alt={cardDisplayName}
                     className="recent-chat-avatar"
                   />
                   {userOnline && <span className="online-presence-dot" />}
@@ -270,7 +299,7 @@ const RecentChats = () => {
                 <div className="recent-chat-info">
                   <div className="chat-card-top-row">
                     <p className="recent-chat-name">
-                      {participant.displayName || "Unknown User"}
+                      {cardDisplayName}
                     </p>
                     <span className="recent-chat-time">
                       {chat.lastUpdated

@@ -2078,3 +2078,123 @@ li {
   background-color: #ffebee;
 }
 
+/* Local Custom Nickname Modal specific styles */
+.nickname-modal-body {
+  padding: 1.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nickname-modal-subtitle {
+  font-size: 14px;
+  color: var(--paragraph-color-one);
+  font-family: var(--secondary-font-family);
+  line-height: 1.4;
+}
+
+.nickname-modal-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px;
+  color: var(--primary-font-color);
+  background-color: var(--chat-input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  outline: none;
+  font-family: var(--primary-font-family);
+  transition: all 0.2s ease;
+}
+
+.nickname-modal-input:focus {
+  background-color: var(--chat-input-focus-bg);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15);
+}
+
+/* Local Custom Nicknames UX Refinements */
+.nickname-live-preview {
+  background: rgba(13, 110, 253, 0.05);
+  border: 1px dashed rgba(13, 110, 253, 0.25);
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.nickname-live-preview p {
+  font-size: 14px;
+  color: var(--chat-text-color);
+  font-weight: 500;
+  margin: 0;
+}
+
+.nickname-live-preview span {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--primary-color);
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--signup-btn-bg) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+  margin-left: 6px;
+}
+
+.nickname-emojis-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.nickname-emoji-chip {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  font-size: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.nickname-emoji-chip:hover {
+  background: rgba(0, 0, 0, 0.08);
+  transform: scale(1.15);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.nickname-emoji-chip:active {
+  transform: scale(0.95);
+}
+
+.drawer-btn.reset-btn {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.drawer-btn.reset-btn:hover {
+  background: rgba(239, 68, 68, 0.18);
+  color: #dc2626;
+  border-color: rgba(239, 68, 68, 0.35);
+  transform: translateY(-1px);
+}
+
+.drawer-btn.reset-btn:active {
+  transform: translateY(0);
+}
+
+.drawer-btn:disabled {
+  background-color: var(--disable-function-bg) !important;
+  color: var(--disable-function-color) !important;
+  cursor: not-allowed;
+  pointer-events: none;
+  box-shadow: none !important;
+  border: none !important;
+}
+

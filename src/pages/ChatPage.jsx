@@ -14,7 +14,7 @@ import {
   db,
   auth
 } from "../firebase";
-import { doc, onSnapshot, getDoc } from "firebase/firestore";
+import { doc, onSnapshot, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { 
   BsPaperclip, 
@@ -25,8 +25,12 @@ import {
   BsFiles, 
   BsThreeDotsVertical, 
   BsSend, 
-  BsChevronLeft 
+  BsChevronLeft,
+  BsTelephone,
+  BsCameraVideo,
+  BsPencilSquare
 } from "react-icons/bs"; // Modern React Icons
+import { useCall } from "../components/contexts/CallContext";
 
 // Standalone utility for smart, brand-aware client-side URL linkification
 const renderMessageText = (text) => {
@@ -114,6 +118,7 @@ const ChatPage = () => {
   );
 
   const navigate = useNavigate();
+  const { initiateCall } = useCall();
   const chatContainerRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -133,6 +138,11 @@ const ChatPage = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [showEmojiGrid, setShowEmojiGrid] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Custom Local Nicknames States
+  const [customNickname, setCustomNickname] = useState("");
+  const [isNicknameModalOpen, setIsNicknameModalOpen] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState("");
 
   const messagesUnsubscribeRef = useRef(null);
   const typingUnsubscribeRef = useRef(null);
@@ -186,6 +196,25 @@ const ChatPage = () => {
     }
   }, [userId]);
 
+  // Sync custom local nickname in real-time
+  useEffect(() => {
+    if (user?.uid && userId) {
+      const docId = `${user.uid}_${userId}`;
+      const docRef = doc(db, "customNicknames", docId);
+      const unsubscribe = onSnapshot(docRef, (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const name = docSnapshot.data().nickname;
+          setCustomNickname(name);
+          setNicknameInput(name);
+        } else {
+          setCustomNickname("");
+          setNicknameInput("");
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [user?.uid, userId]);
+
   // Check/create chat and fetch messages
   useEffect(() => {
     if (!isAuthenticated || !user || !userId) return;
@@ -208,6 +237,7 @@ const ChatPage = () => {
       console.error("Error initializing chat:", error);
       setLoading(false);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, userId, isAuthenticated]);
 
   // Real-time messages listener
@@ -274,6 +304,43 @@ const ChatPage = () => {
     if (!lastActive) return false;
     const activeDate = lastActive.toDate ? lastActive.toDate() : new Date(lastActive);
     return new Date() - activeDate < 5 * 60 * 1000;
+  };
+
+  const handleSaveNickname = async () => {
+    if (!user?.uid || !userId) return;
+    const trimmed = nicknameInput.trim();
+    if (!trimmed) return;
+
+    try {
+      const docId = `${user.uid}_${userId}`;
+      const docRef = doc(db, "customNicknames", docId);
+      await setDoc(docRef, {
+        ownerUid: user.uid,
+        targetUid: userId,
+        nickname: trimmed
+      });
+      setIsNicknameModalOpen(false);
+    } catch (error) {
+      console.error("Failed to save nickname:", error);
+    }
+  };
+
+  const handleResetNickname = async () => {
+    if (!user?.uid || !userId) return;
+
+    const confirmReset = window.confirm("Are you sure you want to remove this custom nickname?");
+    if (!confirmReset) return;
+
+    try {
+      const docId = `${user.uid}_${userId}`;
+      const docRef = doc(db, "customNicknames", docId);
+      await deleteDoc(docRef);
+      setCustomNickname("");
+      setNicknameInput("");
+      setIsNicknameModalOpen(false);
+    } catch (error) {
+      console.error("Failed to remove nickname:", error);
+    }
   };
 
   // Main Send Function (Supports text, replies, and attachments)
@@ -449,11 +516,36 @@ const ChatPage = () => {
             {userOnline && <span className="online-presence-dot header-dot" />}
           </div>
           <div className="chat-header-info">
-            <h2 className="chat-header-title">{displayName || "User"}</h2>
+            <h2 className="chat-header-title">{customNickname || recipientProfile?.displayName || displayName || "User"}</h2>
             <p className="chat-header-status-subtitle">
               {recipientProfile ? getLastSeenText(recipientProfile.lastActive) : "Offline"}
             </p>
           </div>
+
+          <div className="chat-header-actions">
+            <button
+              onClick={() => setIsNicknameModalOpen(true)}
+              className="chat-header-action-btn"
+              title="Set local nickname"
+            >
+              <BsPencilSquare />
+            </button>
+            <button
+              onClick={() => initiateCall(userId, customNickname || recipientProfile?.displayName || displayName, photoURL, false)}
+              className="chat-header-action-btn"
+              title="Voice Call"
+            >
+              <BsTelephone />
+            </button>
+            <button
+              onClick={() => initiateCall(userId, customNickname || recipientProfile?.displayName || displayName, photoURL, true)}
+              className="chat-header-action-btn"
+              title="Video Call"
+            >
+              <BsCameraVideo />
+            </button>
+          </div>
+
           {chatId && (
             <button
               onClick={handleDeleteChatCompletely}
@@ -737,6 +829,81 @@ const ChatPage = () => {
                   </button>
                 </>
               )}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 2. Glassmorphic Local Nickname Modal */}
+      {isNicknameModalOpen && (
+        <div className="glass-modal-overlay" onClick={() => setIsNicknameModalOpen(false)}>
+          <div className="glass-drawer-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header">
+              <h3>Set Local Nickname</h3>
+              <button className="drawer-close-btn" onClick={() => setIsNicknameModalOpen(false)}>
+                <BsX />
+              </button>
+            </div>
+
+            <div className="nickname-modal-body">
+              {/* Glowing Live Preview */}
+              <div className="nickname-live-preview">
+                <p>
+                  Preview: <span>{nicknameInput.trim() || recipientProfile?.displayName || displayName || "User"}</span>
+                </p>
+              </div>
+
+              <p className="nickname-modal-subtitle">
+                This nickname will only be visible to you in your chat and contact lists.
+              </p>
+              
+              <input
+                type="text"
+                className="nickname-modal-input"
+                placeholder="Enter custom nickname..."
+                value={nicknameInput}
+                onChange={(e) => setNicknameInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && nicknameInput.trim()) {
+                    handleSaveNickname();
+                  }
+                }}
+                maxLength={20}
+                autoFocus
+              />
+
+              {/* Inline Quick Emojis Grid */}
+              <div className="nickname-emojis-grid">
+                {["👍", "❤️", "😂", "🎉", "😮", "😢", "😎", "🔥", "✨", "👀", "🤫", "👑"].map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="nickname-emoji-chip"
+                    onClick={() => setNicknameInput((prev) => (prev + emoji).substring(0, 20))}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="drawer-actions-row">
+              <button className="drawer-btn cancel-btn" onClick={() => setIsNicknameModalOpen(false)}>
+                Cancel
+              </button>
+              {customNickname && (
+                <button className="drawer-btn reset-btn" onClick={handleResetNickname}>
+                  Reset Nickname
+                </button>
+              )}
+              <button
+                className="drawer-btn send-btn"
+                onClick={handleSaveNickname}
+                disabled={!nicknameInput.trim()}
+              >
+                Save Nickname
+              </button>
             </div>
 
           </div>

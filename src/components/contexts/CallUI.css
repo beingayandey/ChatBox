@@ -1,0 +1,464 @@
+/* CallUI.css - Premium Glassmorphic Calling UI Stylesheet */
+
+/* Incoming Call Banner/Popup */
+.incoming-call-banner {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100px);
+  width: 90%;
+  max-width: 420px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 
+              0 0 0 1px rgba(255, 255, 255, 0.05),
+              0 0 20px rgba(99, 102, 241, 0.15);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: slideDownIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  color: #f8fafc;
+  font-family: 'Poppins', sans-serif;
+}
+
+@keyframes slideDownIn {
+  to {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.incoming-call-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.incoming-call-avatar-wrapper {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+
+.incoming-call-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(99, 102, 241, 0.6);
+}
+
+.incoming-call-pulse {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 50%;
+  border: 2px solid #6366f1;
+  animation: avatarPulse 2s infinite;
+  opacity: 0;
+}
+
+@keyframes avatarPulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.incoming-call-details {
+  flex: 1;
+}
+
+.incoming-call-name {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 2px 0;
+  color: #ffffff;
+}
+
+.incoming-call-type {
+  font-size: 12px;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.incoming-call-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.incoming-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: inherit;
+}
+
+.incoming-btn-decline {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.incoming-btn-decline:hover {
+  background: rgba(239, 68, 68, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.incoming-btn-accept {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.incoming-btn-accept:hover {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+/* Call Overlay Fullscreen Window */
+.call-overlay-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #f8fafc;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Video Grid and Views */
+.call-video-grid {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #020617;
+}
+
+.remote-video-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.remote-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #020617;
+}
+
+/* Floating Picture in Picture (PiP) Local Video */
+.local-video-container-floating {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 120px;
+  height: 160px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 
+              0 0 0 1px rgba(255, 255, 255, 0.15);
+  background: #1e293b;
+  z-index: 10;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: top right;
+}
+
+.local-video-container-floating:hover {
+  transform: scale(1.05);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 
+              0 0 0 2px rgba(99, 102, 241, 0.5);
+}
+
+.local-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* mirror self stream */
+}
+
+/* Audio Call Center Avatar with Pulsing Waves */
+.audio-call-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.audio-avatar-pulsator {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.audio-avatar {
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+}
+
+.pulsator-wave {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.25);
+  animation: sonarWave 3s infinite linear;
+  opacity: 0;
+}
+
+.wave-1 { animation-delay: 0s; }
+.wave-2 { animation-delay: 1s; }
+.wave-3 { animation-delay: 2s; }
+
+@keyframes sonarWave {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.audio-call-name {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  text-align: center;
+  color: #ffffff;
+}
+
+.audio-call-status {
+  font-size: 14px;
+  color: #94a3b8;
+  margin: 0;
+  letter-spacing: 0.5px;
+  animation: callStatusBlink 1.5s infinite ease-in-out;
+}
+
+@keyframes callStatusBlink {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Call Control Action Bar */
+.call-control-bar {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 28px;
+  border-radius: 80px;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4),
+              0 0 30px rgba(99, 102, 241, 0.1);
+  z-index: 100;
+  transition: all 0.3s ease;
+}
+
+.call-control-bar:hover {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.control-btn {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+}
+
+.control-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: scale(1.08);
+}
+
+.control-btn-active {
+  background: rgba(99, 102, 241, 0.2);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.control-btn-active:hover {
+  background: rgba(99, 102, 241, 0.35);
+}
+
+.control-btn-disabled {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.control-btn-disabled:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+.control-btn-hangup {
+  background: #ef4444;
+  color: #ffffff;
+  width: 58px;
+  height: 58px;
+  font-size: 24px;
+}
+
+.control-btn-hangup:hover {
+  background: #dc2626;
+  transform: scale(1.1) rotate(135deg);
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.5);
+}
+
+/* Audio Call Status Container (Center top) */
+.call-header-status-floating {
+  position: absolute;
+  top: 32px;
+  left: 32px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 8px 16px;
+  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.call-header-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.call-header-details h4 {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0;
+  color: #ffffff;
+}
+
+.call-header-details p {
+  font-size: 11px;
+  margin: 0;
+  color: #94a3b8;
+}
+
+/* Call page action button styles inside Chat Header */
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto; /* Push it to the right */
+  margin-right: 8px;
+}
+
+.chat-header-action-btn {
+  background: none;
+  border: none;
+  color: var(--secondary-color);
+  font-size: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chat-header-action-btn:hover {
+  background-color: var(--my-chat-bg);
+  color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+.chat-header-action-btn:active {
+  transform: translateY(0);
+}
+
+/* Responsive adjustment */
+@media (max-width: 480px) {
+  .local-video-container-floating {
+    width: 90px;
+    height: 120px;
+    top: 16px;
+    right: 16px;
+  }
+  
+  .call-control-bar {
+    width: 90%;
+    justify-content: space-around;
+    padding: 10px 16px;
+    bottom: 24px;
+  }
+  
+  .control-btn {
+    width: 46px;
+    height: 46px;
+    font-size: 18px;
+  }
+  
+  .control-btn-hangup {
+    width: 52px;
+    height: 52px;
+  }
+}

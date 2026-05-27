@@ -12,8 +12,38 @@ const UsersPage = ({ searchQuery }) => {
   // State to track loading status while fetching users
   const [loading, setLoading] = useState(true);
 
+  // Custom Local Nicknames state
+  const [customNicknames, setCustomNicknames] = useState({});
+
   // Hook for navigating to other routes (e.g., ChatPage)
   const navigate = useNavigate();
+
+  // Sync custom local nicknames in real-time
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      if (!currentUser) {
+        setCustomNicknames({});
+        return;
+      }
+      
+      const q = query(
+        collection(db, "customNicknames"),
+        where("ownerUid", "==", currentUser.uid)
+      );
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const nicknameMap = {};
+        snapshot.docs.forEach((doc) => {
+          const data = doc.data();
+          nicknameMap[data.targetUid] = data.nickname;
+        });
+        setCustomNicknames(nicknameMap);
+      });
+      
+      return () => unsubscribe();
+    });
+    
+    return () => unsubscribeAuth();
+  }, []);
 
   // Effect to fetch users in real-time and handle authentication
   useEffect(() => {
@@ -101,31 +131,34 @@ const UsersPage = ({ searchQuery }) => {
       <ul className="users-page__list">
         {users.length > 0 ? (
           // Map users to clickable list items
-          users.map((user) => (
-            <li
-              key={user.id}
-              onClick={() => goToChat(user.id, user.photoURL, user.displayName)} // Navigate to chat on click
-              className="user-card"
-            >
-              {/* User avatar */}
-              <img
-                src={
-                  user.photoURL ||
-                  // Fallback to generated avatar if no photoURL
-                  `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                    user.displayName || "User"
-                  )}&size=40&rounded=true&background=random`
-                }
-                alt={user.displayName}
-                className="user-card__avatar"
-              />
-              {/* User info */}
-              <div className="user-card__info">
-                <p className="user-card__name">{user.displayName}</p>
-                <p className="user-card__email">{user.email}</p>
-              </div>
-            </li>
-          ))
+          users.map((user) => {
+            const contactDisplayName = customNicknames[user.id] || user.displayName || "User";
+            return (
+              <li
+                key={user.id}
+                onClick={() => goToChat(user.id, user.photoURL, contactDisplayName)} // Navigate to chat on click
+                className="user-card"
+              >
+                {/* User avatar */}
+                <img
+                  src={
+                    user.photoURL ||
+                    // Fallback to generated avatar if no photoURL
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      contactDisplayName
+                    )}&size=40&rounded=true&background=random`
+                  }
+                  alt={contactDisplayName}
+                  className="user-card__avatar"
+                />
+                {/* User info */}
+                <div className="user-card__info">
+                  <p className="user-card__name">{contactDisplayName}</p>
+                  <p className="user-card__email">{user.email}</p>
+                </div>
+              </li>
+            );
+          })
         ) : (
           // Show message if no users found
           <p>No users found</p>
