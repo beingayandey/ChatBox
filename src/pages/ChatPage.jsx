@@ -549,17 +549,16 @@ const ChatPage = () => {
             >
               <BsCameraVideo />
             </button>
+            {chatId && (
+              <button
+                onClick={handleDeleteChatCompletely}
+                className="chat-header-action-btn chat-header-delete-btn"
+                title="Delete conversation completely"
+              >
+                <BsTrash />
+              </button>
+            )}
           </div>
-
-          {chatId && (
-            <button
-              onClick={handleDeleteChatCompletely}
-              className="chat-header-delete-btn"
-              title="Delete conversation completely"
-            >
-              <BsTrash />
-            </button>
-          )}
         </div>
 
         {/* Message Container */}
@@ -691,19 +690,21 @@ const ChatPage = () => {
               <div className="chat-bottom-spacer" />
             </div>
           )}
+        </div>
 
-          {/* Typing Indicator */}
-          {isTyping && (
+        {/* Typing Indicator */}
+        {isTyping && (
+          <div className="typing-indicator-container">
             <p className="typing-indicator">
-              {displayName || "User"} is typing
+              {customNickname || recipientProfile?.displayName || displayName || "User"} is typing
               <span className="ellipsis">
                 <span>.</span>
                 <span>.</span>
                 <span>.</span>
               </span>
             </p>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Reply Bar Overlay */}
         {replyTo && (

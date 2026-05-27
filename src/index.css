@@ -473,11 +473,19 @@ li {
   z-index: 10;
 }
 
+.chat-header-info {
+  flex: 1;
+  min-width: 0;
+}
+
 .chat-header-title {
   font-size: 20px;
   font-weight: 600;
   color: var(--primary-font-color);
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-header-img {
@@ -551,7 +559,6 @@ li {
   margin-bottom: 20px;
 }
 
-/* Chat Item Message */
 .chat-item-message {
   font-size: 14px;
   color: var(--chat-text-color);
@@ -561,6 +568,9 @@ li {
   position: relative;
   background-color: inherit; /* Inherit from .chat-item */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 /* Timestamps */
@@ -833,6 +843,14 @@ li {
 .option-button .right-back:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
+.typing-indicator-container {
+  background-color: var(--chat-bg);
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  z-index: 5;
+}
 .typing-indicator {
   position: relative;
   display: inline-block; /* Ensures the element wraps tightly around the content */
@@ -996,8 +1014,11 @@ li {
   max-width: 600px;
   margin: 0 auto;
   background: var(--chat-bg); /* Using the chat background color */
-  min-height: 100vh;
   font-family: var(--primary-font-family); /* Using Urbanist font */
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  width: 100%;
 }
 
 .recent-chats-header {
@@ -1142,10 +1163,19 @@ li {
   color: #888;
   margin: 5px 0;
 }
+.dashboard-chats-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 180px);
+  overflow: hidden;
+}
 .users-page {
   background-color: var(--chat-bg);
-  min-height: 100vh;
   font-family: var(--primary-font-family);
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 180px);
+  overflow: hidden;
 }
 
 .users-page__title {
@@ -1160,6 +1190,9 @@ li {
   list-style: none;
   padding: 0;
   margin: 0;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .user-card {
@@ -1221,6 +1254,57 @@ li {
   font-family: var(--primary-font-family);
 }
 @media screen and (max-width: 480px) {
+  /* Full-bleed responsive chat layout */
+  .main-body {
+    padding: 0 !important;
+  }
+  
+  .total-chat-wrapper {
+    margin-top: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    min-height: 100vh !important;
+    max-height: 100vh !important;
+    width: 100vw !important;
+  }
+
+  .dashboard-chats-wrapper,
+  .users-page {
+    height: calc(100vh - 120px) !important;
+  }
+
+  .chat-header {
+    padding: 10px 12px !important;
+    gap: 8px !important;
+  }
+
+  .chat-header-img {
+    width: 38px !important;
+    height: 38px !important;
+  }
+
+  .chat-header-title {
+    font-size: 16px !important;
+  }
+
+  .chat-header-status-subtitle {
+    font-size: 10px !important;
+  }
+
+  .chat-header-actions {
+    gap: 4px !important;
+  }
+
+  .chat-header-action-btn {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 16px !important;
+  }
+
+  .chat-item {
+    max-width: 85% !important;
+  }
+
   .welcome-btn {
     max-height: 50px;
     border-radius: 50px;
@@ -1389,24 +1473,27 @@ li {
 
 /* Unread Badges & Card Modifiers */
 .recent-chat-card.unread-card {
-  background-color: #f7f9fc;
+  background-color: rgba(0, 118, 255, 0.04) !important;
+  border-left: 4px solid #0076ff !important;
 }
 
 .recent-chat-card.unread-card .recent-chat-name {
-  font-weight: 700;
+  font-weight: 800 !important;
+  color: var(--primary-font-color) !important;
 }
 
 .recent-chat-card.unread-card .recent-chat-message {
-  font-weight: 600;
-  color: #263238;
+  font-weight: 700 !important;
+  color: #1e293b !important;
 }
 
 .unread-dot-badge {
   display: inline-block;
-  width: 8px;
-  height: 8px;
-  background-color: #0d6efd; /* Premium flat blue */
+  width: 10px;
+  height: 10px;
+  background-color: #0076ff; /* Vibrant premium blue */
   border-radius: 50%;
+  box-shadow: 0 0 8px rgba(0, 118, 255, 0.5);
 }
 
 /* Pinned Conversations Layout */
@@ -1698,6 +1785,9 @@ li {
   margin-bottom: 6px;
   font-size: 11px;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .quoted-sender {
@@ -1785,29 +1875,49 @@ li {
 
 .keyboard-emoji-grid {
   position: absolute;
-  bottom: 125%;
-  right: 0;
-  background-color: #ffffff;
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  padding: 6px;
+  bottom: 130%;
+  left: -10px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 16px;
+  padding: 8px 10px;
   display: flex;
-  gap: 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  gap: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.05);
   z-index: 100;
+  animation: emojiPopIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes emojiPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .grid-emoji-btn {
   background: none;
   border: none;
-  font-size: 18px;
+  font-size: 20px;
   cursor: pointer;
-  padding: 5px;
-  border-radius: 6px;
+  padding: 6px;
+  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .grid-emoji-btn:hover {
-  background-color: #f5f5f5;
+  background-color: rgba(0, 0, 0, 0.05);
+  transform: scale(1.2);
+}
+
+.grid-emoji-btn:active {
+  transform: scale(0.95);
 }
 
 /* Minimalist pop-up attachment drawer modal */
@@ -2059,23 +2169,12 @@ li {
 }
 
 .chat-header-delete-btn {
-  background: none;
-  border: none;
-  color: #78909c;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  margin-left: auto;
+  color: #78909c !important;
 }
 
 .chat-header-delete-btn:hover {
-  color: #d32f2f;
-  background-color: #ffebee;
+  color: #d32f2f !important;
+  background-color: #ffebee !important;
 }
 
 /* Local Custom Nickname Modal specific styles */
