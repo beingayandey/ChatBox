@@ -383,7 +383,7 @@ li {
   background-color: var(--primary-white);
   border-radius: 0 0 15px 15px;
   box-shadow: 5.92105px 11.8421px 23.6842px rgba(211, 209, 216, 0.3);
-  z-index: 1;
+  z-index: 99;
 }
 .search-drop-down-inner {
   max-height: 300px;

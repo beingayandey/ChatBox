@@ -9,8 +9,8 @@ import {
   deleteMessage,
   markMessagesAsRead,
   toggleMessageReaction,
-  uploadChatFile,
   deleteChatCompletely,
+  cleanupExpiredMessages,
   db,
   auth
 } from "../firebase";
@@ -248,6 +248,11 @@ const ChatPage = () => {
     const unsubscribe = fetchMessages(chatId, (fetchedMessages) => {
       setMessages(fetchedMessages);
       setLoading(false);
+
+      // Client-side auto-delete cleanup (privacy TTL replacement for Spark tier)
+      if (fetchedMessages.length > 0) {
+        cleanupExpiredMessages(chatId, fetchedMessages);
+      }
 
       // Mark unread messages as read
       if (fetchedMessages.some((msg) => msg.senderId !== user.uid && !msg.read)) {

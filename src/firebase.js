@@ -13,6 +13,7 @@ import {
   where,
   orderBy,
   limit,
+  limitToLast,
   onSnapshot,
   getDoc,
   getDocs,
@@ -142,10 +143,15 @@ export const sendMessage = async (chatId, senderId, content, replyTo = null, med
     // Create a new message document in the "messages" subcollection of the chat
     const messageRef = doc(collection(db, "storedChats", chatId, "messages"));
 
+    // Calculate expiration timestamp for 5 hours in the future for Firestore TTL auto-deletion
+    const expireAtDate = new Date();
+    expireAtDate.setHours(expireAtDate.getHours() + 5);
+
     const messageData = {
       senderId,
       content,
       timestamp: serverTimestamp(),
+      expireAt: expireAtDate, // 5 hours from now
       read: false,
       delivered: false,
     };
@@ -236,16 +242,18 @@ export const fetchChats = (userId, callback) => {
 // Function to fetch messages for a specific chat in real-time
 // @param {string} chatId - The ID of the chat
 // @param {function} callback - Function to handle the fetched messages
-// @param {number} limitNum - Number of messages to fetch (default: 20)
-export const fetchMessages = (chatId, callback, limitNum = 20) => {
+//
+// NOTE: We use limitToLast(50) to fetch the most recent 50 messages.
+// Because it's "to last", the real-time listener window slides forward
+// automatically when new messages are added, allowing them to appear instantly,
+// while protecting our database read quotas on the Firebase Free Spark Tier.
+export const fetchMessages = (chatId, callback) => {
   try {
     // Reference to the messages subcollection for the chat
     const messagesRef = collection(db, "storedChats", chatId, "messages");
 
-    // Create a query to fetch messages:
-    // - Ordered by timestamp (ascending, oldest first)
-    // - Limited to limitNum messages
-    const q = query(messagesRef, orderBy("timestamp", "asc"), limit(limitNum));
+    // Query the latest 50 messages chronologically (oldest → newest)
+    const q = query(messagesRef, orderBy("timestamp", "asc"), limitToLast(50));
 
     // Set up a real-time listener for the messages
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -510,6 +518,42 @@ export const clearChatMessages = async (chatId) => {
   } catch (error) {
     console.error("Error clearing chat messages:", error);
     throw error;
+  }
+};
+
+/**
+ * Scans a list of messages, identifies any that have expired client-side based on their `expireAt` field,
+ * and deletes them from Firestore in a single efficient writeBatch call.
+ */
+export const cleanupExpiredMessages = async (chatId, messages) => {
+  try {
+    const now = new Date();
+    const expired = messages.filter((msg) => {
+      if (!msg.expireAt) return false;
+      const expireTime = msg.expireAt.toDate ? msg.expireAt.toDate() : new Date(msg.expireAt);
+      return expireTime < now;
+    });
+
+    if (expired.length === 0) return;
+
+    const batch = writeBatch(db);
+    expired.forEach((msg) => {
+      const msgRef = doc(db, "storedChats", chatId, "messages", msg.id);
+      batch.delete(msgRef);
+    });
+
+    await batch.commit();
+
+    // After deleting, check if we need to update the lastMessage in the chat document
+    const remaining = messages.filter(m => !expired.some(e => e.id === m.id));
+    const lastMsg = remaining[remaining.length - 1] || { content: "" };
+    
+    await updateDoc(doc(db, "storedChats", chatId), {
+      lastMessage: lastMsg.content || (lastMsg.mediaURL ? "📷 Sent a photo" : ""),
+      lastUpdated: serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error cleaning up expired messages:", error);
   }
 };
 
