@@ -8,150 +8,225 @@ import {
   setTypingStatus,
   deleteMessage,
   markMessagesAsRead,
+  toggleMessageReaction,
+  uploadChatFile,
+  deleteChatCompletely,
+  db,
+  auth
 } from "../firebase";
 import { doc, onSnapshot, getDoc } from "firebase/firestore";
-import { db, auth } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
+import { 
+  BsPaperclip, 
+  BsEmojiSmile, 
+  BsReply, 
+  BsX, 
+  BsTrash, 
+  BsFiles, 
+  BsThreeDotsVertical, 
+  BsSend, 
+  BsChevronLeft 
+} from "react-icons/bs"; // Modern React Icons
 
-// ChatPage component for rendering a chat interface between two users
+// Standalone utility for smart, brand-aware client-side URL linkification
+const renderMessageText = (text) => {
+  if (!text) return "";
+  
+  // URL matching Regex
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  
+  return parts.map((part, index) => {
+    if (part.match(urlRegex)) {
+      let displayLabel = part;
+      // Brand-aware clean visual labels
+      if (part.includes("instagram.com")) {
+        displayLabel = "📷 Instagram Link";
+      } else if (part.includes("facebook.com")) {
+        displayLabel = "🔵 Facebook Link";
+      } else if (part.includes("youtube.com") || part.includes("youtu.be")) {
+        displayLabel = "🎥 YouTube Link";
+      } else {
+        // truncate general link nicely
+        try {
+          const urlObj = new URL(part);
+          const pathname = urlObj.pathname;
+          const displayPath = pathname.length > 15 ? pathname.substring(0, 15) + "..." : pathname;
+          displayLabel = `🔗 ${urlObj.hostname}${displayPath === "/" ? "" : displayPath}`;
+        } catch {
+          displayLabel = "🔗 Link";
+        }
+      }
+      
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="chat-message-link"
+          onClick={(e) => e.stopPropagation()} // Prevent options menu toggle on bubble click
+        >
+          {displayLabel}
+        </a>
+      );
+    }
+    return part;
+  });
+};
+// Standalone utility for professional relative last seen formatting
+const getLastSeenText = (lastActive) => {
+  if (!lastActive) return "Offline";
+  
+  const date = lastActive.toDate ? lastActive.toDate() : new Date(lastActive);
+  const now = new Date();
+  const diffMs = now - date;
+  
+  if (diffMs < 5 * 60 * 1000) {
+    return "Online";
+  }
+  
+  const diffMins = Math.floor(diffMs / (60 * 1000));
+  if (diffMins < 60) {
+    return `Last seen ${diffMins}m ago`;
+  }
+  
+  const diffHours = Math.floor(diffMs / (60 * 60 * 1000));
+  if (diffHours < 24) {
+    return `Last seen ${diffHours}h ago`;
+  }
+  
+  return `Last seen ${date.toLocaleDateString([], { month: "short", day: "numeric" })} at ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+};
+
 const ChatPage = () => {
-  // Extract the recipient's user ID from URL parameters (e.g., /chat/:userId)
   const { userId } = useParams();
-
-  // Access location state for recipient's details (passed via navigation)
   const { state } = useLocation();
-
-  // Destructure photoURL and displayName from location state (for recipient)
   const { photoURL, displayName } = state || {};
 
-  // Select auth state from Redux store (from authSlice)
-  // Includes current user and authentication status
   const { user, isAuthenticated } = useSelector(
     (state) => ({
-      user: state.auth.user, // Current user object (e.g., Firebase Auth user)
-      isAuthenticated: state.auth.isAuthenticated, // Login status
+      user: state.auth.user,
+      isAuthenticated: state.auth.isAuthenticated,
     }),
-    // Equality comparison to prevent unnecessary re-renders
     (prev, next) =>
       prev.user === next.user && prev.isAuthenticated === next.isAuthenticated
   );
 
-  // Hook for programmatic navigation
   const navigate = useNavigate();
-
-  // Ref for the chat messages container (for auto-scrolling)
   const chatContainerRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // State for storing messages in the chat
+  // Core Chat States
   const [messages, setMessages] = useState([]);
-
-  // State for the new message input field
   const [newMessage, setNewMessage] = useState("");
-
-  // State for the chat ID (e.g., "chat_uid1_uid2")
   const [chatId, setChatId] = useState(null);
-
-  // State for tracking if the other user is typing
   const [isTyping, setIsTyping] = useState(false);
+  const [recipientProfile, setRecipientProfile] = useState(null);
 
-  // Refs to store unsubscribe functions for Firebase listeners
+  // Modern UI States
+  const [activeMenuId, setActiveMenuId] = useState(null);
+  const [replyTo, setReplyTo] = useState(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showEmojiGrid, setShowEmojiGrid] = useState(false);
+  const [loading, setLoading] = useState(true);
+
   const messagesUnsubscribeRef = useRef(null);
   const typingUnsubscribeRef = useRef(null);
 
-  // Function to generate a consistent chat ID based on participant IDs
+  const popularEmojis = ["👍", "❤️", "😂", "🎉", "😮", "😢"];
+
+  // Helper to generate chatId
   const generateChatId = () => {
-    // Return null if user or userId is missing
-    if (!user || !userId) {
-      return null;
-    }
-    // Sort participant IDs to ensure consistent chat ID
+    if (!user || !userId) return null;
     const participants = [user.uid, userId].sort();
-    // Format: "chat_uid1_uid2"
     return `chat_${participants[0]}_${participants[1]}`;
   };
 
-  // Effect to monitor authentication state and clean up on logout
+  // Auth synchronization effect
   useEffect(() => {
-    // Listen for changes in Firebase Auth state
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      // If no user is logged in or not authenticated, clean up and redirect
       if (!currentUser || !isAuthenticated) {
-        // Unsubscribe from messages listener
-        if (messagesUnsubscribeRef.current) {
-          messagesUnsubscribeRef.current();
-          messagesUnsubscribeRef.current = null;
-        }
-        // Unsubscribe from typing listener
-        if (typingUnsubscribeRef.current) {
-          typingUnsubscribeRef.current();
-          typingUnsubscribeRef.current = null;
-        }
-        // Clear local state
+        cleanupListeners();
         setMessages([]);
         setChatId(null);
         setIsTyping(false);
-        // Redirect to login page
         navigate("/login");
       }
     });
 
-    // Clean up auth listener on component unmount
     return () => unsubscribeAuth();
   }, [navigate, isAuthenticated]);
 
-  // Effect to check for an existing chat on component mount
-  useEffect(() => {
-    // Skip if not authenticated or missing user/userId
-    if (!isAuthenticated || !user || !userId) {
-      return;
+  // Clean up helper
+  const cleanupListeners = () => {
+    if (messagesUnsubscribeRef.current) {
+      messagesUnsubscribeRef.current();
+      messagesUnsubscribeRef.current = null;
     }
+    if (typingUnsubscribeRef.current) {
+      typingUnsubscribeRef.current();
+      typingUnsubscribeRef.current = null;
+    }
+  };
 
-    // Async function to check if chat exists
-    const checkChat = async () => {
+  // Sync recipient presence profile details in real-time
+  useEffect(() => {
+    if (userId) {
+      const userRef = doc(db, "users", userId);
+      const unsubscribe = onSnapshot(userRef, (snapshot) => {
+        if (snapshot.exists()) {
+          setRecipientProfile(snapshot.data());
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [userId]);
+
+  // Check/create chat and fetch messages
+  useEffect(() => {
+    if (!isAuthenticated || !user || !userId) return;
+
+    const checkAndInitChat = async () => {
       const generatedChatId = generateChatId();
       if (!generatedChatId) return;
 
-      // Reference to the chat document in Firestore
       const chatRef = doc(db, "storedChats", generatedChatId);
-      // Fetch the chat document
       const chatDoc = await getDoc(chatRef);
 
-      // If chat exists, set the chatId state
       if (chatDoc.exists()) {
         setChatId(generatedChatId);
+      } else {
+        setLoading(false); // If no chat exists yet, immediately display empty
       }
     };
 
-    // Run check and handle errors
-    checkChat().catch((error) => {
-      console.error("Error checking chat:", error);
+    checkAndInitChat().catch((error) => {
+      console.error("Error initializing chat:", error);
+      setLoading(false);
     });
   }, [user?.uid, userId, isAuthenticated]);
 
-  // Effect to fetch messages and mark them as read
+  // Real-time messages listener
   useEffect(() => {
-    // Skip if no chatId or not authenticated
-    if (!chatId || !isAuthenticated) {
-      return;
-    }
+    if (!chatId || !isAuthenticated) return;
 
-    // Fetch messages using Firebase function (real-time listener)
+    setLoading(true);
     const unsubscribe = fetchMessages(chatId, (fetchedMessages) => {
-      // Update messages state
       setMessages(fetchedMessages);
-      // Check for unread messages from the other user
-      if (
-        fetchedMessages.some((msg) => msg.senderId !== user.uid && !msg.read)
-      ) {
-        // Mark messages as read for the current user
+      setLoading(false);
+
+      // Mark unread messages as read
+      if (fetchedMessages.some((msg) => msg.senderId !== user.uid && !msg.read)) {
         markMessagesAsRead(chatId, user.uid);
       }
     });
 
-    // Store unsubscribe function to clean up later
     messagesUnsubscribeRef.current = unsubscribe;
 
-    // Clean up messages listener on unmount or chatId change
     return () => {
       if (messagesUnsubscribeRef.current) {
         messagesUnsubscribeRef.current();
@@ -160,31 +235,20 @@ const ChatPage = () => {
     };
   }, [chatId, user?.uid, isAuthenticated]);
 
-  // Effect to monitor typing status of the other user
+  // Real-time typing status listener
   useEffect(() => {
-    // Skip if no chatId or not authenticated
-    if (!chatId || !isAuthenticated) {
-      return;
-    }
+    if (!chatId || !isAuthenticated) return;
 
-    // Reference to the chat document
     const chatRef = doc(db, "storedChats", chatId);
-    // Set up real-time listener for chat document
     const unsubscribe = onSnapshot(chatRef, (doc) => {
       const data = doc.data();
-      if (!data) {
-        return;
-      }
-      // Find the other participant's ID
+      if (!data) return;
       const otherUserId = data.participants.find((id) => id !== user?.uid);
-      // Update typing state based on the other user's status
       setIsTyping(data.typing?.[otherUserId] || false);
     });
 
-    // Store unsubscribe function
     typingUnsubscribeRef.current = unsubscribe;
 
-    // Clean up typing listener on unmount or chatId change
     return () => {
       if (typingUnsubscribeRef.current) {
         typingUnsubscribeRef.current();
@@ -193,146 +257,345 @@ const ChatPage = () => {
     };
   }, [chatId, user?.uid, isAuthenticated]);
 
-  // Effect to auto-scroll to the latest message
+  // Autoscroll to bottom
   useEffect(() => {
-    // Check if chat container exists
     if (chatContainerRef.current) {
-      // Scroll to the bottom of the container
-      chatContainerRef.current.scrollTop =
-        chatContainerRef.current.scrollHeight;
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isTyping]);
 
-  // Function to format message timestamp
   const getFormattedTime = (timestamp) => {
-    // Return empty string if no timestamp
     if (!timestamp) return "";
-    // Convert Firebase Timestamp to Date and format as HH:MM
-    const date = timestamp.toDate();
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  // Function to send a message and create chat if needed
+  const isOnline = (lastActive) => {
+    if (!lastActive) return false;
+    const activeDate = lastActive.toDate ? lastActive.toDate() : new Date(lastActive);
+    return new Date() - activeDate < 5 * 60 * 1000;
+  };
+
+  // Main Send Function (Supports text, replies, and attachments)
   const handleSendMessage = async () => {
-    // Skip if no message, not authenticated, or missing user/userId
-    if (!newMessage || !isAuthenticated || !user || !userId) {
-      return;
-    }
+    if (!newMessage.trim() && !selectedFile) return;
+    if (!isAuthenticated || !user || !userId) return;
 
     try {
       let currentChatId = chatId;
 
-      // If no chatId, create a new chat
+      // Create new chat document if not established
       if (!currentChatId) {
         currentChatId = generateChatId();
         if (currentChatId) {
-          await createChat(user.uid, userId); // Create chat in Firestore
-          setChatId(currentChatId); // Update state
+          await createChat(user.uid, userId);
+          setChatId(currentChatId);
         }
       }
 
-      // Send the message using Firebase function
-      await sendMessage(currentChatId, user.uid, newMessage);
-      // Clear the input field
+      let fileUrl = null;
+      if (selectedFile) {
+        setIsUploading(true);
+        fileUrl = await uploadChatFile(currentChatId, selectedFile);
+        setIsUploading(false);
+        closeAttachmentDrawer();
+      }
+
+      const contentText = newMessage.trim();
       setNewMessage("");
+
+      // Package reply details if active
+      let replyPayload = null;
+      if (replyTo) {
+        replyPayload = {
+          messageId: replyTo.id,
+          senderName: replyTo.senderName,
+          contentPreview: replyTo.content || "📷 Attachment"
+        };
+        setReplyTo(null); // Clear reply state
+      }
+
+      await sendMessage(currentChatId, user.uid, contentText, replyPayload, fileUrl);
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error("Failed to send message:", error);
+      setIsUploading(false);
     }
   };
 
-  // Function to handle typing indicator
   const handleTyping = async () => {
-    // Skip if no chatId, user, or not authenticated
-    if (!chatId || !user || !isAuthenticated) {
-      return;
-    }
-    // Set typing status to true
+    if (!chatId || !user || !isAuthenticated) return;
     await setTypingStatus(chatId, user.uid, true);
-    // Reset typing status to false after 3 seconds
-    setTimeout(() => setTypingStatus(chatId, user.uid, false), 3000);
+    // Auto-clear typing indicator after 2.5 seconds
+    const timer = setTimeout(() => setTypingStatus(chatId, user.uid, false), 2500);
+    return () => clearTimeout(timer);
   };
 
-  // Function to delete a message
   const handleDeleteMessage = async (messageId) => {
-    // Skip if no chatId or not authenticated
-    if (!chatId || !isAuthenticated) {
-      return;
-    }
+    if (!chatId || !isAuthenticated) return;
     try {
-      // Delete the message using Firebase function
       await deleteMessage(chatId, messageId);
+      setActiveMenuId(null);
     } catch (error) {
-      console.error("Error deleting message:", error);
+      console.error("Failed to delete message:", error);
     }
   };
 
-  // Render a login prompt if not authenticated
+  const handleDeleteChatCompletely = async () => {
+    if (!chatId || !isAuthenticated) return;
+    if (
+      window.confirm(
+        "Are you sure you want to completely delete this conversation? This will delete all history from Firestore for all participants with no history remaining."
+      )
+    ) {
+      try {
+        await deleteChatCompletely(chatId);
+        navigate("/dashboard");
+      } catch (error) {
+        console.error("Failed to delete chat completely:", error);
+      }
+    }
+  };
+
+  const handleCopyMessage = (text) => {
+    navigator.clipboard.writeText(text);
+    setActiveMenuId(null);
+  };
+
+  const handleReplyMessage = (msg) => {
+    const isMe = msg.senderId === user.uid;
+    setReplyTo({
+      id: msg.id,
+      senderName: isMe ? "You" : (displayName || "User"),
+      content: msg.content || (msg.mediaURL ? "Photo Attachment" : "")
+    });
+    setActiveMenuId(null);
+  };
+
+  const handleToggleReaction = async (messageId, emoji) => {
+    if (!chatId || !user?.uid) return;
+    try {
+      await toggleMessageReaction(chatId, messageId, user.uid, emoji);
+      setActiveMenuId(null);
+    } catch (err) {
+      console.error("Reaction failed:", err);
+    }
+  };
+
+  // Attachment Previews & Handlers
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      setFilePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const blob = items[i].getAsFile();
+        setSelectedFile(blob);
+        setFilePreview(URL.createObjectURL(blob));
+        setIsDrawerOpen(true); // Auto-open attachment drawer
+      }
+    }
+  };
+
+  const closeAttachmentDrawer = () => {
+    setIsDrawerOpen(false);
+    setSelectedFile(null);
+    if (filePreview) {
+      URL.revokeObjectURL(filePreview);
+      setFilePreview(null);
+    }
+  };
+
+  // Close menus when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = () => {
+      setActiveMenuId(null);
+      setShowEmojiGrid(false);
+    };
+    document.addEventListener("click", handleOutsideClick);
+    return () => document.removeEventListener("click", handleOutsideClick);
+  }, []);
+
   if (!isAuthenticated) {
-    return <div>Please log in to access chats.</div>;
+    return <div className="chats-auth-fallback">Please log in to access chats.</div>;
   }
 
-  // Render the chat interface
+  const userOnline = recipientProfile ? isOnline(recipientProfile.lastActive) : false;
+
   return (
-    <div className="total-chat-wrapper">
+    <div className="total-chat-wrapper" onPaste={handlePaste}>
       <div className="chat-wrapper-outer">
-        {/* Chat header with recipient's photo and name */}
+        {/* Modern Header */}
         <div className="chat-header">
-          {photoURL && (
+          <button className="chat-header-back-btn" onClick={() => navigate("/dashboard")}>
+            <BsChevronLeft />
+          </button>
+          <div className="avatar-wrapper">
             <img
-              src={photoURL}
+              src={
+                photoURL ||
+                `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                  displayName || "User"
+                )}&size=40&rounded=true&background=random`
+              }
               alt={displayName || "User"}
               className="chat-header-img"
             />
+            {userOnline && <span className="online-presence-dot header-dot" />}
+          </div>
+          <div className="chat-header-info">
+            <h2 className="chat-header-title">{displayName || "User"}</h2>
+            <p className="chat-header-status-subtitle">
+              {recipientProfile ? getLastSeenText(recipientProfile.lastActive) : "Offline"}
+            </p>
+          </div>
+          {chatId && (
+            <button
+              onClick={handleDeleteChatCompletely}
+              className="chat-header-delete-btn"
+              title="Delete conversation completely"
+            >
+              <BsTrash />
+            </button>
           )}
-          <div>
-            <h2 className="chat-header-title">
-              Chat with {displayName || "User"}
-            </h2>
-            <p className="chat-header-userid">{userId}</p>
-          </div>
         </div>
-        {/* Chat messages container */}
+
+        {/* Message Container */}
         <div className="middle-of-chats" ref={chatContainerRef}>
-          <div className="chat-list">
-            {messages.length === 0 ? (
-              // Show prompt if no messages
+          {loading ? (
+            <div className="chat-viewport-spinner-container">
+              <div className="modern-spinner"></div>
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="chat-viewport-empty">
               <p>No messages yet. Start the conversation!</p>
-            ) : (
-              // Render messages
-              messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`chat-item ${
-                    msg.senderId === user.uid ? "my-chat" : "user-chat"
-                  }`}
-                >
-                  <div className="chat-item-message">
-                    {msg.content}
-                    <span className="chat-item-time">
-                      {getFormattedTime(msg.timestamp)}
-                      {msg.senderId === user.uid && (
-                        <>
-                          {/* Show read/unread indicators */}
-                          <span className="tick-indicator">
-                            {msg.read ? "✓✓" : "✓"}
-                          </span>
-                          {/* Delete button for sender's messages */}
-                          <button
-                            onClick={() => handleDeleteMessage(msg.id)}
-                            className="delete-btn"
-                          >
-                            Delete
-                          </button>
-                        </>
+            </div>
+          ) : (
+            <div className="chat-list">
+              {messages.map((msg) => {
+                const isMyMessage = msg.senderId === user.uid;
+                const isMenuOpen = activeMenuId === msg.id;
+
+                return (
+                  <div
+                    key={msg.id}
+                    className={`chat-item-wrapper ${isMyMessage ? "my-chat-wrapper" : "user-chat-wrapper"}`}
+                  >
+                    <div className={`chat-item ${isMyMessage ? "my-chat" : "user-chat"}`}>
+                      <div className="chat-item-message">
+                        
+                        {/* Quoted Reply Display */}
+                        {msg.replyTo && (
+                          <div className="message-quoted-bubble">
+                            <p className="quoted-sender">{msg.replyTo.senderName}</p>
+                            <p className="quoted-preview">{msg.replyTo.contentPreview}</p>
+                          </div>
+                        )}
+
+                        {/* Photo Attachment Inline */}
+                        {msg.mediaURL && (
+                          <div className="message-image-attachment">
+                            <img src={msg.mediaURL} alt="Shared Attachment" className="shared-media-img" />
+                          </div>
+                        )}
+
+                        {/* Text Content */}
+                        {msg.content && (
+                          <p className="chat-content-text">
+                            {renderMessageText(msg.content)}
+                          </p>
+                        )}
+
+                        {/* Meta Details Row */}
+                        <span className="chat-item-time">
+                          {getFormattedTime(msg.timestamp)}
+                          {isMyMessage && (
+                            <span className={`tick-indicator ${msg.read ? "seen" : msg.delivered ? "delivered" : "sent"}`}>
+                              {msg.read || msg.delivered ? " ✓✓" : " ✓"}
+                            </span>
+                          )}
+                        </span>
+
+                        {/* Emoji Reactions Badges */}
+                        {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                          <div className="reactions-badges-row">
+                            {Object.entries(msg.reactions).map(([emoji, uids]) => (
+                              <button
+                                key={emoji}
+                                className={`reaction-badge-pill ${uids.includes(user.uid) ? "active-reaction" : ""}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleReaction(msg.id, emoji);
+                                }}
+                              >
+                                {emoji} <span className="reaction-badge-count">{uids.length}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Always-Visible Options Menu Button */}
+                    <div className="message-dropdown-container">
+                      <button
+                        className="message-options-trigger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuId(isMenuOpen ? null : msg.id);
+                        }}
+                      >
+                        <BsThreeDotsVertical />
+                      </button>
+
+                      {isMenuOpen && (
+                        <div className="message-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                          {/* Quick Reactions bar */}
+                          <div className="quick-reactions-bar">
+                            {popularEmojis.map((emoji) => (
+                              <button
+                                key={emoji}
+                                className="reaction-option-btn"
+                                onClick={() => handleToggleReaction(msg.id, emoji)}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Options list */}
+                          <div className="menu-options-list">
+                            <button className="dropdown-menu-item" onClick={() => handleReplyMessage(msg)}>
+                              <BsReply className="menu-icon" /> Reply
+                            </button>
+                            {msg.content && (
+                              <button className="dropdown-menu-item" onClick={() => handleCopyMessage(msg.content)}>
+                                <BsFiles className="menu-icon" /> Copy
+                              </button>
+                            )}
+                            {isMyMessage && (
+                              <button className="dropdown-menu-item delete-option" onClick={() => handleDeleteMessage(msg.id)}>
+                                <BsTrash className="menu-icon" /> Delete
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       )}
-                    </span>
+                    </div>
+
                   </div>
-                </div>
-              ))
-            )}
-            <div className="chat-bottom-spacer" />
-          </div>
-          {/* Typing indicator */}
+                );
+              })}
+              <div className="chat-bottom-spacer" />
+            </div>
+          )}
+
+          {/* Typing Indicator */}
           {isTyping && (
             <p className="typing-indicator">
               {displayName || "User"} is typing
@@ -344,27 +607,143 @@ const ChatPage = () => {
             </p>
           )}
         </div>
-        {/* Message input and send button */}
+
+        {/* Reply Bar Overlay */}
+        {replyTo && (
+          <div className="reply-preview-bar">
+            <div className="reply-preview-content">
+              <p className="reply-title">Replying to {replyTo.senderName}</p>
+              <p className="reply-body">{replyTo.content}</p>
+            </div>
+            <button className="reply-close-btn" onClick={() => setReplyTo(null)}>
+              <BsX />
+            </button>
+          </div>
+        )}
+
+        {/* Modern Interactive Footer */}
         <div className="chat-footer">
-          <input
-            type="text"
+          {/* Plus/Paperclip Trigger for Attachment Drawer */}
+          <button className="chat-action-btn" onClick={() => setIsDrawerOpen(true)}>
+            <BsPaperclip />
+          </button>
+
+          {/* Emojis Selector Overlay Trigger */}
+          <div className="emoji-trigger-wrapper">
+            <button className="chat-action-btn" onClick={(e) => {
+              e.stopPropagation();
+              setShowEmojiGrid(!showEmojiGrid);
+            }}>
+              <BsEmojiSmile />
+            </button>
+            {showEmojiGrid && (
+              <div className="keyboard-emoji-grid" onClick={(e) => e.stopPropagation()}>
+                {popularEmojis.map((emoji) => (
+                  <button
+                    key={emoji}
+                    className="grid-emoji-btn"
+                    onClick={() => {
+                      setNewMessage((prev) => prev + emoji);
+                      setShowEmojiGrid(false);
+                    }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Dynamic Auto-Resizing Textarea */}
+          <textarea
+            rows={Math.min(4, newMessage.split("\n").length || 1)}
             placeholder="Type your message..."
-            className="chat-input"
+            className="chat-input-textarea"
             value={newMessage}
             onChange={(e) => {
-              setNewMessage(e.target.value); // Update input value
-              handleTyping(); // Trigger typing indicator
+              setNewMessage(e.target.value);
+              handleTyping();
             }}
-            onKeyPress={(e) => e.key === "Enter" && handleSendMessage()} // Send on Enter
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
           />
-          <button className="chat-send-btn" onClick={handleSendMessage}>
-            Send
+
+          <button className="chat-send-btn-modern" onClick={handleSendMessage}>
+            <BsSend />
           </button>
         </div>
       </div>
+
+      {/* Minimalist Pop-up Attachment Drawer */}
+      {isDrawerOpen && (
+        <div className="glass-modal-overlay" onClick={closeAttachmentDrawer}>
+          <div className="glass-drawer-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header">
+              <h3>Send Attachment</h3>
+              <button className="drawer-close-btn" onClick={closeAttachmentDrawer}>
+                <BsX />
+              </button>
+            </div>
+
+            {/* Target Area */}
+            <div
+              className="drawer-dropzone"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                accept="image/*,application/pdf"
+                onChange={handleFileChange}
+              />
+              
+              {filePreview ? (
+                <div className="drawer-preview-box">
+                  <img src={filePreview} alt="Upload Preview" className="preview-media" />
+                  <p className="preview-file-name">{selectedFile?.name}</p>
+                </div>
+              ) : (
+                <div className="dropzone-empty">
+                  <span className="dropzone-icon">📷</span>
+                  <p>Click or drag image here to attach</p>
+                  <span className="dropzone-subtext">Images are compressed automatically</span>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="drawer-actions-row">
+              {isUploading ? (
+                <div className="uploading-state">
+                  <div className="modern-spinner small-spinner"></div>
+                  <span>Compressing & Uploading...</span>
+                </div>
+              ) : (
+                <>
+                  <button className="drawer-btn cancel-btn" onClick={closeAttachmentDrawer}>
+                    Cancel
+                  </button>
+                  <button
+                    className="drawer-btn send-btn"
+                    disabled={!selectedFile}
+                    onClick={handleSendMessage}
+                  >
+                    Send File
+                  </button>
+                </>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-// Export the component
 export default ChatPage;

@@ -1,11 +1,10 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { fetchChats } from "../firebase"; // Import fetchChats directly from Firebase utilities
+import { fetchChats, togglePinChat, deleteChatCompletely, markMessagesAsDelivered, db } from "../firebase"; // Import directly from Firebase utilities
 import { setChats } from "../store/slices/chatSlice"; // Import action to update chats in Redux store
-import { db } from "../firebase"; // Import Firestore database instance
-import { doc, getDoc } from "firebase/firestore"; // Firestore functions for fetching documents
-import { useState } from "react"; // Hook for managing local state
-import { useNavigate } from "react-router-dom"; // Hook for programmatic navigation
+import { doc, getDoc, onSnapshot } from "firebase/firestore"; // Firestore functions
+import { useNavigate } from "react-router-dom"; // Hook for navigation
+import { BsPinAngle, BsPinFill, BsTrash } from "react-icons/bs"; // Pinned chat and trash icons
 
 // RecentChats component to display a list of the user's recent chats
 const RecentChats = () => {
@@ -24,8 +23,30 @@ const RecentChats = () => {
   // State to store participant details (e.g., displayName, photoURL) for each chat
   const [chatParticipants, setChatParticipants] = useState({});
 
+  // State to store Firestore profile of current user (for real-time pinned/unread updates)
+  const [currentUserProfile, setCurrentUserProfile] = useState(null);
+
   // Ref to store the unsubscribe function for the Firebase listener
   const unsubscribeRef = useRef(null);
+
+  // Sync current user's profile from Firestore in real-time
+  useEffect(() => {
+    if (user?.uid) {
+      const userRef = doc(db, "users", user.uid);
+      const unsubscribe = onSnapshot(
+        userRef,
+        (docSnapshot) => {
+          if (docSnapshot.exists()) {
+            setCurrentUserProfile(docSnapshot.data());
+          }
+        },
+        (err) => {
+          console.error("Error watching user profile:", err);
+        }
+      );
+      return () => unsubscribe();
+    }
+  }, [user?.uid]);
 
   // Effect to fetch chats in real-time when the user is authenticated
   useEffect(() => {
@@ -89,6 +110,18 @@ const RecentChats = () => {
     }
   }, [chats, user]);
 
+  // Effect to automatically mark unread incoming conversations as delivered
+  useEffect(() => {
+    if (user?.uid && chats.length > 0) {
+      const unreadChatsList = currentUserProfile?.unreadChats || [];
+      chats.forEach((chat) => {
+        if (unreadChatsList.includes(chat.id)) {
+          markMessagesAsDelivered(chat.id, user.uid);
+        }
+      });
+    }
+  }, [chats, currentUserProfile?.unreadChats, user?.uid]);
+
   // Function to handle clicking a chat (navigate to ChatPage)
   const handleChatClick = (otherParticipantId, photoURL, displayName) => {
     // Navigate to the chat page for the selected participant
@@ -98,23 +131,97 @@ const RecentChats = () => {
     });
   };
 
-  // Render loading, error, or empty states
-  if (!user) return <div>Please log in to view chats</div>;
-  if (loading) return <div>Loading chats...</div>;
-  if (error) return <div>Error: {error}</div>;
-  if (chats.length === 0) return <div>No recent chats</div>;
+  // Function to toggle pin state on a chat
+  const handlePinToggle = async (e, chatId) => {
+    e.stopPropagation(); // Avoid triggering chat click
+    if (user?.uid) {
+      try {
+        await togglePinChat(user.uid, chatId);
+      } catch (err) {
+        console.error("Pin action failed:", err);
+      }
+    }
+  };
 
-  // Sort chats by lastUpdated timestamp (newest first)
+  // Function to delete chat completely from Firestore
+  const handleDeleteChatCompletely = async (e, chatId) => {
+    e.stopPropagation(); // Avoid triggering chat click
+    if (
+      window.confirm(
+        "Are you sure you want to completely delete this conversation? This will delete all history from Firestore for all participants with no history remaining."
+      )
+    ) {
+      try {
+        await deleteChatCompletely(chatId);
+      } catch (err) {
+        console.error("Delete conversation failed:", err);
+      }
+    }
+  };
+
+  // 5 minutes active presence check (completely browser-side, zero billing writes)
+  const isOnline = (lastActive) => {
+    if (!lastActive) return false;
+    let activeDate;
+    if (typeof lastActive.toDate === "function") {
+      activeDate = lastActive.toDate();
+    } else {
+      activeDate = new Date(lastActive);
+    }
+    return new Date() - activeDate < 5 * 60 * 1000;
+  };
+
+  // Render loading, error, or empty states with flat minimalist elements
+  if (!user) return <div className="chats-auth-fallback">Please log in to view chats.</div>;
+
+  if (loading) {
+    return (
+      <div className="chats-loading-container">
+        <div className="modern-spinner"></div>
+        <p className="loading-text">Retrieving conversations...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="chats-error-container">
+        <p className="chats-error-text">Failed to load conversations: {error}</p>
+      </div>
+    );
+  }
+
+  if (chats.length === 0) {
+    return (
+      <div className="chats-empty-container">
+        <div className="chats-empty-illustration">💬</div>
+        <p className="chats-empty-text">No recent conversations.</p>
+        <p className="chats-empty-subtext">Select users from directory to start chatting!</p>
+      </div>
+    );
+  }
+
+  // Get current user's pinned and unread lists
+  const pinnedChatsList = currentUserProfile?.pinnedChats || [];
+  const unreadChatsList = currentUserProfile?.unreadChats || [];
+
+  // Sort chats: Pinned first, then sorted by lastUpdated timestamp
   const sortedChats = [...chats].sort((a, b) => {
+    const aPinned = pinnedChatsList.includes(a.id);
+    const bPinned = pinnedChatsList.includes(b.id);
+
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+
     const aTime = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
     const bTime = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
-    return bTime - aTime; // Descending order
+    return bTime - aTime; // Newest first
   });
 
   // Render the chat list
   return (
-    <>
-      <h2 className="users-page__title">Contacts</h2>
+    <div className="dashboard-chats-wrapper">
+      <h2 className="users-page__title">Conversations</h2>
       <div className="recent-chats-container">
         <ul className="recent-chats-list">
           {sortedChats.map((chat) => {
@@ -124,12 +231,17 @@ const RecentChats = () => {
             );
             // Get participant details from state
             const participant = chatParticipants[otherParticipantId] || {};
+            const isPinned = pinnedChatsList.includes(chat.id);
+            const isUnread = unreadChatsList.includes(chat.id);
+            const userOnline = isOnline(participant.lastActive);
 
             return (
               // Chat item (clickable to navigate to ChatPage)
               <li
                 key={chat.id}
-                className="recent-chat-card"
+                className={`recent-chat-card ${isPinned ? "pinned-chat" : ""} ${
+                  isUnread ? "unread-card" : ""
+                }`}
                 onClick={() =>
                   handleChatClick(
                     otherParticipantId,
@@ -137,44 +249,72 @@ const RecentChats = () => {
                     participant.displayName
                   )
                 }
-                style={{ cursor: "pointer" }} // Indicate clickability
               >
-                {/* Participant avatar */}
-                <img
-                  src={
-                    participant.photoURL ||
-                    // Fallback to a generated avatar if no photoURL
-                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                      user.displayName || "User"
-                    )}&size=40&rounded=true&background=random`
-                  }
-                  alt={participant.displayName || "User"}
-                  className="recent-chat-avatar"
-                />
-                {/* Chat info (name and last message) */}
-                <div className="recent-chat-info">
-                  <p className="recent-chat-name">
-                    {participant.displayName || "Unknown User"}
-                  </p>
-                  <p className="recent-chat-message">
-                    {chat.lastMessage || "No messages yet"}
-                  </p>
+                {/* Participant avatar and presence dot */}
+                <div className="avatar-wrapper">
+                  <img
+                    src={
+                      participant.photoURL ||
+                      // Fallback to a generated avatar if no photoURL
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                        participant.displayName || "User"
+                      )}&size=40&rounded=true&background=random`
+                    }
+                    alt={participant.displayName || "User"}
+                    className="recent-chat-avatar"
+                  />
+                  {userOnline && <span className="online-presence-dot" />}
                 </div>
-                {/* Timestamp of last message */}
-                <span className="recent-chat-time">
-                  {chat.lastUpdated
-                    ? new Date(chat.lastUpdated).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit", // Format as HH:MM
-                      })
-                    : "N/A"}
-                </span>
+
+                {/* Chat info (name, message preview, timestamp, pin, and badge) */}
+                <div className="recent-chat-info">
+                  <div className="chat-card-top-row">
+                    <p className="recent-chat-name">
+                      {participant.displayName || "Unknown User"}
+                    </p>
+                    <span className="recent-chat-time">
+                      {chat.lastUpdated
+                        ? new Date(chat.lastUpdated).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit", // Format as HH:MM
+                          })
+                        : "N/A"}
+                    </span>
+                  </div>
+                  <div className="chat-card-bottom-row">
+                    <p className="recent-chat-message">
+                      {chat.lastMessage || "No messages yet"}
+                    </p>
+                    <div className="chat-card-actions">
+                      {/* Pinned Icon Toggle */}
+                      <button
+                        onClick={(e) => handlePinToggle(e, chat.id)}
+                        className={`pin-action-btn ${isPinned ? "is-pinned" : ""}`}
+                        title={isPinned ? "Unpin chat" : "Pin chat"}
+                      >
+                        {isPinned ? <BsPinFill /> : <BsPinAngle />}
+                      </button>
+
+                      {/* Delete Conversation Button */}
+                      <button
+                        onClick={(e) => handleDeleteChatCompletely(e, chat.id)}
+                        className="delete-chat-card-btn"
+                        title="Delete conversation completely"
+                      >
+                        <BsTrash />
+                      </button>
+
+                      {/* Unread circle indicator badge */}
+                      {isUnread && <span className="unread-dot-badge" />}
+                    </div>
+                  </div>
+                </div>
               </li>
             );
           })}
         </ul>
       </div>
-    </>
+    </div>
   );
 };
 

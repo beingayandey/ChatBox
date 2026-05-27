@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
   getFirestore,
   collection,
@@ -46,6 +47,9 @@ const provider = new GoogleAuthProvider();
 // Initialize Firestore database
 // This is the database where chats and messages are stored
 export const db = getFirestore(app);
+
+// Initialize Firebase Storage
+export const storage = getStorage(app);
 
 /**
  * Creates a new chat between two users.
@@ -131,32 +135,42 @@ export const createChat = async (participant1Id, participant2Id) => {
 // @param {string} chatId - The ID of the chat
 // @param {string} senderId - The ID of the user sending the message
 // @param {string} content - The text content of the message
-export const sendMessage = async (chatId, senderId, content) => {
+// @param {object} replyTo - Optional parent message reference for replies
+// @param {string} mediaURL - Optional URL for media attachments
+export const sendMessage = async (chatId, senderId, content, replyTo = null, mediaURL = null) => {
   try {
     // Create a new message document in the "messages" subcollection of the chat
     const messageRef = doc(collection(db, "storedChats", chatId, "messages"));
 
-    // Add the message to Firestore with:
-    // - senderId: Who sent it
-    // - content: The message text
-    // - timestamp: When it was sent
-    // - read: Whether the recipient has read it (initially false)
-    await setDoc(messageRef, {
+    const messageData = {
       senderId,
       content,
       timestamp: serverTimestamp(),
       read: false,
-    });
+      delivered: false,
+    };
+
+    if (replyTo) {
+      messageData.replyTo = replyTo;
+    }
+
+    if (mediaURL) {
+      messageData.mediaURL = mediaURL;
+    }
+
+    // Add the message to Firestore
+    await setDoc(messageRef, messageData);
 
     // Update the chat document with:
-    // - lastMessage: The content of the latest message
+    // - lastMessage: The content of the latest message or photo placeholder
     // - lastUpdated: Timestamp of the message
-    // { merge: true } ensures we only update these fields, not overwrite the entire document
+    const displayMessage = content || (mediaURL ? "📷 Sent a photo" : "New message");
+
     const chatRef = doc(db, "storedChats", chatId);
     await setDoc(
       chatRef,
       {
-        lastMessage: content,
+        lastMessage: displayMessage,
         lastUpdated: serverTimestamp(),
       },
       { merge: true }
@@ -277,9 +291,9 @@ export const markMessagesAsRead = async (chatId, userId) => {
     // Create a batch to update multiple documents efficiently
     const batch = writeBatch(db);
 
-    // Update each message to set read: true
+    // Update each message to set read: true and delivered: true
     snapshot.forEach((doc) => {
-      batch.update(doc.ref, { read: true });
+      batch.update(doc.ref, { read: true, delivered: true });
     });
 
     // Remove the chatId from the user's unreadChats array
@@ -344,6 +358,221 @@ export const deleteMessage = async (chatId, messageId) => {
   } catch (error) {
     console.error("Error deleting message:", error);
     throw error;
+  }
+};
+
+/**
+ * Compresses an image client-side to keep storage footprint minimal on the Free Spark Tier.
+ */
+export const compressImage = (file, maxWidth = 1200, quality = 0.75) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(new File([blob], file.name, { type: "image/jpeg" }));
+            } else {
+              reject(new Error("Canvas to Blob conversion failed"));
+            }
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
+
+/**
+ * Uploads a file (compressed if it's an image) to Firebase Storage and returns its download URL.
+ */
+export const uploadChatFile = async (chatId, file) => {
+  try {
+    let finalFile = file;
+    if (file.type.startsWith("image/")) {
+      finalFile = await compressImage(file);
+    }
+    const storageRef = ref(storage, `chats/${chatId}/${Date.now()}_${finalFile.name}`);
+    const snapshot = await uploadBytes(storageRef, finalFile);
+    const downloadUrl = await getDownloadURL(snapshot.ref);
+    return downloadUrl;
+  } catch (error) {
+    console.error("Error uploading chat file:", error);
+    throw error;
+  }
+};
+
+/**
+ * Toggles a reaction emoji on a specific message.
+ */
+export const toggleMessageReaction = async (chatId, messageId, userId, reaction) => {
+  try {
+    const msgRef = doc(db, "storedChats", chatId, "messages", messageId);
+    const msgDoc = await getDoc(msgRef);
+    if (!msgDoc.exists()) return;
+    
+    const data = msgDoc.data();
+    const currentReactions = data.reactions || {};
+    const usersWhoReacted = currentReactions[reaction] || [];
+    
+    let updatedUsers;
+    if (usersWhoReacted.includes(userId)) {
+      updatedUsers = usersWhoReacted.filter((id) => id !== userId);
+    } else {
+      updatedUsers = [...usersWhoReacted, userId];
+    }
+    
+    const updatedReactions = {
+      ...currentReactions,
+      [reaction]: updatedUsers
+    };
+    
+    // Clean up empty reaction keys to keep document size light
+    if (updatedUsers.length === 0) {
+      delete updatedReactions[reaction];
+    }
+    
+    await updateDoc(msgRef, { reactions: updatedReactions });
+  } catch (error) {
+    console.error("Error toggling message reaction:", error);
+    throw error;
+  }
+};
+
+/**
+ * Toggles pinning a specific chat for a user.
+ */
+export const togglePinChat = async (userId, chatId) => {
+  try {
+    const userRef = doc(db, "users", userId);
+    const userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) return;
+    
+    const userData = userDoc.data();
+    const currentPinned = userData.pinnedChats || [];
+    
+    let updatedPinned;
+    if (currentPinned.includes(chatId)) {
+      updatedPinned = currentPinned.filter((id) => id !== chatId);
+    } else {
+      updatedPinned = [...currentPinned, chatId];
+    }
+    
+    await updateDoc(userRef, { pinnedChats: updatedPinned });
+  } catch (error) {
+    console.error("Error toggling pin chat:", error);
+    throw error;
+  }
+};
+
+/**
+ * Clears all messages in a chat and resets the lastMessage status.
+ */
+export const clearChatMessages = async (chatId) => {
+  try {
+    const messagesRef = collection(db, "storedChats", chatId, "messages");
+    const snapshot = await getDocs(messagesRef);
+    const batch = writeBatch(db);
+    
+    snapshot.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    
+    await batch.commit();
+    
+    // Reset lastMessage on the chat document
+    await updateDoc(doc(db, "storedChats", chatId), {
+      lastMessage: "",
+      lastUpdated: serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error clearing chat messages:", error);
+    throw error;
+  }
+};
+
+/**
+ * Deletes a chat completely from Firestore (both messages subcollection and parent chat doc), leaving no history.
+ */
+export const deleteChatCompletely = async (chatId) => {
+  try {
+    // 1. Delete all messages inside the subcollection first
+    const messagesRef = collection(db, "storedChats", chatId, "messages");
+    const snapshot = await getDocs(messagesRef);
+    const batch = writeBatch(db);
+    
+    snapshot.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    
+    await batch.commit();
+    
+    // 2. Delete the parent chat document
+    await deleteDoc(doc(db, "storedChats", chatId));
+  } catch (error) {
+    console.error("Error deleting chat completely:", error);
+    throw error;
+  }
+};
+
+/**
+ * Updates user presence boolean (isOnline) and lastActive time in Firestore.
+ */
+export const updateUserPresence = async (userId, isOnline) => {
+  try {
+    const userRef = doc(db, "users", userId);
+    await updateDoc(userRef, {
+      isOnline,
+      lastActive: serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error updating user presence:", error);
+  }
+};
+
+/**
+ * Marks all unread incoming messages in a chat as delivered.
+ */
+export const markMessagesAsDelivered = async (chatId, userId) => {
+  try {
+    const messagesRef = collection(db, "storedChats", chatId, "messages");
+    const q = query(
+      messagesRef,
+      where("senderId", "!=", userId),
+      where("delivered", "==", false)
+    );
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+    
+    snapshot.forEach((doc) => {
+      batch.update(doc.ref, { delivered: true });
+    });
+    
+    await batch.commit();
+  } catch (error) {
+    console.error("Error marking messages as delivered:", error);
   }
 };
 

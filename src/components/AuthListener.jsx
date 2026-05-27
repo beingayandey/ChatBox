@@ -1,13 +1,13 @@
 import { useEffect } from "react";
-import { useDispatch } from "react-redux"; // Hook to dispatch Redux actions
+import { useDispatch, useSelector } from "react-redux"; // Hooks for Redux actions & state
 import { onAuthStateChanged } from "firebase/auth"; // Firebase function to monitor auth state
-import { auth } from "../firebase"; // Firebase auth instance
+import { auth, updateUserPresence } from "../firebase"; // Firebase auth & presence updates
 import { loginSuccess, logout } from "../store/slices/authSlice"; // Redux actions for auth state
 
-// AuthListener component to sync Firebase auth state with Redux
+// AuthListener component to sync Firebase auth state with Redux and track user presence
 const AuthListener = () => {
-  // Hook to dispatch Redux actions
   const dispatch = useDispatch();
+  const reduxUser = useSelector((state) => state.auth.user);
 
   // Effect to monitor Firebase authentication state
   useEffect(() => {
@@ -48,7 +48,60 @@ const AuthListener = () => {
     return () => {
       unsubscribe();
     };
-  }, [dispatch]); // Re-run effect if dispatch changes
+  }, [dispatch]);
+
+  // Effect to synchronize user real-time presence (Online/Offline/Last Active)
+  useEffect(() => {
+    if (!reduxUser?.uid) return;
+
+    // Immediately mark as Online when app loads / user is authenticated
+    updateUserPresence(reduxUser.uid, true);
+
+    const handleFocus = () => {
+      updateUserPresence(reduxUser.uid, true);
+    };
+
+    const handleBlur = () => {
+      updateUserPresence(reduxUser.uid, false);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        updateUserPresence(reduxUser.uid, true);
+      } else {
+        updateUserPresence(reduxUser.uid, false);
+      }
+    };
+
+    // Heartbeat check running every 40s to keep Firestore status active
+    const heartbeatInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        updateUserPresence(reduxUser.uid, true);
+      }
+    }, 40000);
+
+    // Visibility event listeners
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Clear online presence when the user unloads/closes the tab
+    const handleUnload = () => {
+      updateUserPresence(reduxUser.uid, false);
+    };
+    window.addEventListener("beforeunload", handleUnload);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleUnload);
+      
+      // Cleanup: immediately toggle offline when user signs out or tab unmounts
+      updateUserPresence(reduxUser.uid, false);
+    };
+  }, [reduxUser?.uid]);
 
   // Return null as this component does not render anything
   return null;

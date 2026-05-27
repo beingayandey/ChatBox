@@ -11,17 +11,17 @@ const MainLayouts = () => {
   // Hook to access the current location (URL path)
   const location = useLocation();
 
-  // Determine if the current page is the login page
-  // Checks if the path is "/" or "/login" to conditionally render the Header
+  // Determine if the current page is the login page or a chat room
   const isLoginPage =
     location.pathname === "/login" || location.pathname === "/";
+  const isChatPage = location.pathname.startsWith("/chat/");
 
   return (
     // Wrap the app in ToastProvider to enable toast notifications
     // This context allows any component to display notifications
     <ToastProvider>
-      {/* Conditionally render the Header if not on the login page */}
-      {!isLoginPage && <Header />}
+      {/* Conditionally render the Header if not on the login page or chat page */}
+      {!isLoginPage && !isChatPage && <Header />}
 
       {/* Main content wrapper */}
       <div className="main-body-outer">
