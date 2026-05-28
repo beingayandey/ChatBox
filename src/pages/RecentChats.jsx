@@ -245,8 +245,11 @@ const RecentChats = () => {
     if (aPinned && !bPinned) return -1;
     if (!aPinned && bPinned) return 1;
 
-    const aTime = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
-    const bTime = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+    // Treat a null/pending lastUpdated (optimistic local write before server
+    // timestamp resolves) as Date.now() so the just-messaged chat sorts to
+    // the top instead of falling to the bottom (epoch = 0).
+    const aTime = a.lastUpdated ? new Date(a.lastUpdated).getTime() : Date.now();
+    const bTime = b.lastUpdated ? new Date(b.lastUpdated).getTime() : Date.now();
     return bTime - aTime; // Newest first
   });
 

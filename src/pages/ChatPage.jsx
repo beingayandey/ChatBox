@@ -283,8 +283,10 @@ const ChatPage = () => {
   // • Passes an onError handler to fetchMessages: if Firestore silently drops
   //   the WebSocket (phone lock, network loss, browser background-throttling)
   //   the error surfaces here and we schedule an automatic 3-second restart.
+  // • `showSpinner` defaults to true for initial mount; reconnects pass false
+  //   so existing messages remain visible while the new subscription settles.
   // ─────────────────────────────────────────────────────────────────────────
-  const startMessagesListener = useCallback((resolvedChatId) => {
+  const startMessagesListener = useCallback((resolvedChatId, showSpinner = true) => {
     if (!resolvedChatId || !isAuthenticated) return;
 
     // Always clean up the previous subscriber before attaching a new one.
@@ -293,7 +295,11 @@ const ChatPage = () => {
       messagesUnsubscribeRef.current = null;
     }
 
-    setLoading(true);
+    // Only blank the UI with a spinner on initial/intentional loads.
+    // Silent reconnects keep existing messages visible until the new snapshot arrives.
+    if (showSpinner) {
+      setLoading(true);
+    }
 
     const unsubscribe = fetchMessages(
       resolvedChatId,
@@ -323,7 +329,8 @@ const ChatPage = () => {
         setTimeout(() => {
           // Read from the ref to get the latest chatId without a stale closure.
           const currentChatId = chatIdRef.current;
-          if (currentChatId) startMessagesListener(currentChatId);
+          // Silent restart — don't blank messages during auto-recovery.
+          if (currentChatId) startMessagesListener(currentChatId, false);
         }, 3000);
       }
     );
@@ -361,7 +368,7 @@ const ChatPage = () => {
         const currentChatId = chatIdRef.current;
         if (currentChatId) {
           console.log("[ChatPage] Tab visible — restarting message listener.");
-          startMessagesListener(currentChatId);
+          startMessagesListener(currentChatId, false); // silent: keep existing messages visible
         }
       }
     };
@@ -378,7 +385,7 @@ const ChatPage = () => {
       const currentChatId = chatIdRef.current;
       if (currentChatId) {
         console.log("[ChatPage] Network back online — restarting message listener.");
-        startMessagesListener(currentChatId);
+        startMessagesListener(currentChatId, false); // silent: keep existing messages visible
       }
     };
     window.addEventListener("online", handleOnline);
@@ -407,10 +414,31 @@ const ChatPage = () => {
     };
   }, [chatId, user?.uid, isAuthenticated]);
 
-  // Autoscroll to bottom
+  // Autoscroll to bottom with transition tracking
   useEffect(() => {
     if (chatContainerRef.current) {
+      // Scroll instantly first
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+
+      // If typing started, run staggered scrolls to follow the 0.35s height transition
+      if (isTyping) {
+        const timer1 = setTimeout(() => {
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          }
+        }, 150);
+
+        const timer2 = setTimeout(() => {
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          }
+        }, 350);
+
+        return () => {
+          clearTimeout(timer1);
+          clearTimeout(timer2);
+        };
+      }
     }
   }, [messages, isTyping]);
 
@@ -513,13 +541,14 @@ const ChatPage = () => {
   const handleTyping = async () => {
     if (!chatId || !user || !isAuthenticated) return;
 
-    // Clear any existing active timeout to debounce the status clear
-    if (typingTimeoutRef.current) {
+    if (!typingTimeoutRef.current) {
+      // Only set status to true in Firestore if we are starting a typing session
+      // This avoids redundant updates and network thrashing on every keystroke
+      await setTypingStatus(chatId, user.uid, true);
+    } else {
+      // If we are already typing, just clear the previous clear-timeout to keep the session active
       clearTimeout(typingTimeoutRef.current);
     }
-
-    // Set own typing status to true immediately
-    await setTypingStatus(chatId, user.uid, true);
 
     // Schedule a new timeout to set typing status to false after 2.5s of inactivity
     typingTimeoutRef.current = setTimeout(async () => {

@@ -52,6 +52,9 @@ export const db = getFirestore(app);
 // Initialize Firebase Storage
 export const storage = getStorage(app);
 
+// Circuit breaker to prevent infinite loop errors and console spam when daily free tier quota is exceeded
+let isQuotaExceeded = false;
+
 /**
  * Creates a new chat between two users.
  * @param {string} participant1Id - The ID of the first user.
@@ -210,8 +213,11 @@ export const sendMessage = async (chatId, senderId, content, replyTo = null, med
 // @param {function} callback - Function to handle the fetched chats
 export const fetchChats = (userId, callback) => {
   try {
-    // Create a query to find chats where the user is a participant
-    // "array-contains" checks if userId is in the participants array
+    // Create a query to find chats where the user is a participant.
+    // NOTE: We intentionally do NOT add orderBy() here — combining
+    // array-contains with orderBy requires a composite Firestore index
+    // that doesn't exist on the free Spark tier project. Sorting is
+    // handled client-side in RecentChats with the null→Date.now() fix.
     const q = query(
       collection(db, "storedChats"),
       where("participants", "array-contains", userId)
@@ -255,7 +261,20 @@ export const fetchMessages = (chatId, callback, onError) => {
     // Reference to the messages subcollection for the chat
     const messagesRef = collection(db, "storedChats", chatId, "messages");
 
-    // Query the latest 50 messages chronologically (oldest → newest)
+    // Query the latest 50 messages chronologically (oldest → newest).
+    // We use limitToLast(50) with orderBy("timestamp", "asc") so the window
+    // slides forward automatically as new messages arrive.
+    //
+    // IMPORTANT: When the local user sends a message, Firestore fires an
+    // *optimistic* local snapshot BEFORE the server resolves the timestamp.
+    // During this window the new message has timestamp = null, which causes
+    // it to sort to position 0 ("oldest") under an ascending order and
+    // therefore fall OUTSIDE the limitToLast(50) window — making it
+    // disappear until the server write confirms.
+    //
+    // Fix: We post-sort the snapshot results in the callback so that any
+    // message with a null/pending timestamp is treated as "now" (i.e., the
+    // very latest), guaranteeing it always appears at the bottom of the list.
     const q = query(messagesRef, orderBy("timestamp", "asc"), limitToLast(50));
 
     // Set up a real-time listener for the messages.
@@ -266,12 +285,26 @@ export const fetchMessages = (chatId, callback, onError) => {
       (snapshot) => {
         // Map the query results to an array of message objects
         // Each message includes its ID and data (senderId, content, etc.)
-        const messages = snapshot.docs.map((doc) => ({
+        const rawMessages = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
 
-        // Call the provided callback with the messages
+        // Re-sort so that messages with a null/pending serverTimestamp (i.e.
+        // the optimistic local write that hasn't been confirmed yet) always
+        // appear at the end rather than the beginning.  Once the server write
+        // confirms, the real timestamp takes over and the order stays correct.
+        const messages = [...rawMessages].sort((a, b) => {
+          const aTime = a.timestamp
+            ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime())
+            : Date.now(); // treat pending timestamp as "right now" → always last
+          const bTime = b.timestamp
+            ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime())
+            : Date.now();
+          return aTime - bTime;
+        });
+
+        // Call the provided callback with the correctly-ordered messages
         callback(messages);
       },
       (error) => {
@@ -296,12 +329,10 @@ export const markMessagesAsRead = async (chatId, userId) => {
     // Reference to the messages subcollection
     const messagesRef = collection(db, "storedChats", chatId, "messages");
 
-    // Query to finde unread messages not sent by the user
-    // - senderId != userId: Messages sent by the other participant
-    // - read == false: Messages that haven't been read
+    // Query unread messages. To avoid composite index requirements (inequality + equality),
+    // we query all unread messages in the chat subcollection and filter by senderId client-side.
     const q = query(
       messagesRef,
-      where("senderId", "!=", userId),
       where("read", "==", false)
     );
 
@@ -311,9 +342,12 @@ export const markMessagesAsRead = async (chatId, userId) => {
     // Create a batch to update multiple documents efficiently
     const batch = writeBatch(db);
 
-    // Update each message to set read: true and delivered: true
+    // Update each incoming message (not sent by the current user) to set read: true and delivered: true
     snapshot.forEach((doc) => {
-      batch.update(doc.ref, { read: true, delivered: true });
+      const data = doc.data();
+      if (data.senderId !== userId) {
+        batch.update(doc.ref, { read: true, delivered: true });
+      }
     });
 
     // Remove the chatId from the user's unreadChats array
@@ -335,6 +369,7 @@ export const markMessagesAsRead = async (chatId, userId) => {
 // @param {string} userId - The ID of the user
 // @param {boolean} isTyping - Whether the user is typing
 export const setTypingStatus = async (chatId, userId, isTyping) => {
+  if (isQuotaExceeded) return;
   try {
     // Reference to the chat document
     const chatRef = doc(db, "storedChats", chatId);
@@ -345,6 +380,11 @@ export const setTypingStatus = async (chatId, userId, isTyping) => {
       [`typing.${userId}`]: isTyping,
     });
   } catch (error) {
+    if (error?.code === "resource-exhausted") {
+      isQuotaExceeded = true;
+      console.warn("[Firebase Circuit Breaker] Daily Firestore quota exceeded. Disabling further typing status writes.");
+      return;
+    }
     console.error("Error setting typing status:", error);
     throw error;
   }
@@ -558,7 +598,15 @@ export const cleanupExpiredMessages = async (chatId, messages) => {
 
     // After deleting, check if we need to update the lastMessage in the chat document
     const remaining = messages.filter(m => !expired.some(e => e.id === m.id));
-    const lastMsg = remaining[remaining.length - 1] || { content: "" };
+    
+    // Sort remaining messages by timestamp ascending, treating null/undefined/pending timestamps as the newest (Infinity)
+    const sortedRemaining = [...remaining].sort((a, b) => {
+      const aTime = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : Infinity;
+      const bTime = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : Infinity;
+      return aTime - bTime;
+    });
+
+    const lastMsg = sortedRemaining[sortedRemaining.length - 1] || { content: "" };
     
     await updateDoc(doc(db, "storedChats", chatId), {
       lastMessage: lastMsg.content || (lastMsg.mediaURL ? "📷 Sent a photo" : ""),
@@ -597,6 +645,7 @@ export const deleteChatCompletely = async (chatId) => {
  * Updates user presence boolean (isOnline) and lastActive time in Firestore.
  */
 export const updateUserPresence = async (userId, isOnline) => {
+  if (isQuotaExceeded) return;
   try {
     const userRef = doc(db, "users", userId);
     await updateDoc(userRef, {
@@ -604,6 +653,11 @@ export const updateUserPresence = async (userId, isOnline) => {
       lastActive: serverTimestamp()
     });
   } catch (error) {
+    if (error?.code === "resource-exhausted") {
+      isQuotaExceeded = true;
+      console.warn("[Firebase Circuit Breaker] Daily Firestore quota exceeded. Disabling further presence updates.");
+      return;
+    }
     console.error("Error updating user presence:", error);
   }
 };
@@ -612,22 +666,33 @@ export const updateUserPresence = async (userId, isOnline) => {
  * Marks all unread incoming messages in a chat as delivered.
  */
 export const markMessagesAsDelivered = async (chatId, userId) => {
+  if (isQuotaExceeded) return;
   try {
     const messagesRef = collection(db, "storedChats", chatId, "messages");
+    
+    // To avoid composite index requirements (inequality + equality),
+    // we query all undelivered messages in the chat subcollection and filter by senderId client-side.
     const q = query(
       messagesRef,
-      where("senderId", "!=", userId),
       where("delivered", "==", false)
     );
     const snapshot = await getDocs(q);
     const batch = writeBatch(db);
     
     snapshot.forEach((doc) => {
-      batch.update(doc.ref, { delivered: true });
+      const data = doc.data();
+      if (data.senderId !== userId) {
+        batch.update(doc.ref, { delivered: true });
+      }
     });
     
     await batch.commit();
   } catch (error) {
+    if (error?.code === "resource-exhausted") {
+      isQuotaExceeded = true;
+      console.warn("[Firebase Circuit Breaker] Daily Firestore quota exceeded. Disabling further delivery status updates.");
+      return;
+    }
     console.error("Error marking messages as delivered:", error);
   }
 };

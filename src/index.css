@@ -616,6 +616,7 @@ li {
   padding: 0; /* Remove padding for compactness */
   margin: 4px 8px;
   border-radius: 8px; /* WhatsApp-like rounded corners */
+  min-width: 0; /* Crucial for preventing flex children from exceeding max-width */
 }
 
 /* User Chat (Left-Aligned) */
@@ -638,6 +639,10 @@ li {
   color: var(--chat-text-color);
   line-height: 1.4;
   padding: 8px 12px; /* Compact padding */
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
   border-radius: 8px; /* Match chat-item */
   position: relative;
   background-color: inherit; /* Inherit from .chat-item */
@@ -921,6 +926,7 @@ li {
 .typing-indicator-wrapper {
   max-height: 0;
   opacity: 0;
+  visibility: hidden;
   overflow: hidden;
   transform: translateY(12px) scale(0.95);
   transform-origin: left bottom;
@@ -932,12 +938,14 @@ li {
     max-height 0.35s cubic-bezier(0.25, 1, 0.5, 1),
     opacity 0.25s ease,
     transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
-    margin 0.35s ease;
+    margin 0.35s ease,
+    visibility 0.35s ease;
 }
 
 .typing-indicator-wrapper.visible {
   max-height: 60px;
   opacity: 1;
+  visibility: visible;
   transform: translateY(0) scale(1);
   pointer-events: auto;
   margin: 6px 0;
@@ -1858,6 +1866,8 @@ li {
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 4px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .reaction-badge-pill {
@@ -2664,5 +2674,238 @@ li {
 @keyframes avatarZoomIn {
   to {
     transform: scale(1);
+  }
+}
+
+/* Premium Glassmorphic Profile Settings Modal */
+.settings-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  animation: avatarFadeIn 0.25s ease-out forwards;
+}
+
+.settings-modal-panel {
+  width: 90%;
+  max-width: 440px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  transform: scale(0.9);
+  opacity: 0;
+  animation: settingsZoomIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 14px;
+}
+
+.settings-modal-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--primary-font-color);
+  font-family: var(--primary-font-family);
+}
+
+.settings-modal-close-btn {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: var(--paragraph-color-one);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.settings-modal-close-btn:hover {
+  background-color: var(--border-color);
+  color: var(--primary-font-color);
+}
+
+.settings-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Premium Avatar Section */
+.settings-avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.settings-avatar-wrapper {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 3px solid var(--primary-color);
+  padding: 2px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.settings-avatar-wrapper:hover {
+  transform: scale(1.03);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+}
+
+.settings-avatar-preview {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.settings-avatar-upload-label {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background-color: var(--primary-color);
+  color: #ffffff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.settings-avatar-upload-label:hover {
+  background-color: var(--primary-color-dark, #0b5ed7);
+  transform: scale(1.1);
+}
+
+.settings-avatar-upload-label .camera-icon {
+  font-size: 16px;
+}
+
+.settings-avatar-hint {
+  font-size: 12px;
+  color: var(--paragraph-color-one);
+  font-family: var(--secondary-font-family);
+}
+
+/* Form Styles */
+.settings-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--primary-font-color);
+  font-family: var(--primary-font-family);
+  opacity: 0.85;
+}
+
+.settings-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 15px;
+  color: var(--primary-font-color);
+  background-color: var(--chat-input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  outline: none;
+  font-family: var(--primary-font-family);
+  transition: all 0.2s ease;
+}
+
+.settings-input:focus {
+  background-color: var(--chat-input-focus-bg);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15);
+}
+
+.settings-input-readonly {
+  background-color: var(--border-color);
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* Actions */
+.settings-actions-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.settings-btn {
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  font-family: var(--primary-font-family);
+  transition: all 0.2s ease;
+}
+
+.settings-btn.cancel-btn {
+  background-color: var(--border-color);
+  color: var(--primary-font-color);
+}
+
+.settings-btn.cancel-btn:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='dark'] .settings-btn.cancel-btn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.settings-btn.save-btn {
+  background-color: var(--primary-color);
+  color: #ffffff;
+}
+
+.settings-btn.save-btn:hover:not(:disabled) {
+  background-color: var(--primary-color-dark, #0b5ed7);
+  box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2);
+}
+
+.settings-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@keyframes settingsZoomIn {
+  to {
+    transform: scale(1);
+    opacity: 1;
   }
 }
