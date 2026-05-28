@@ -11,6 +11,7 @@ import {
   toggleMessageReaction,
   deleteChatCompletely,
   cleanupExpiredMessages,
+  uploadChatFile,
   db,
   auth
 } from "../firebase";
@@ -28,9 +29,13 @@ import {
   BsChevronLeft,
   BsTelephone,
   BsCameraVideo,
-  BsPencilSquare
+  BsPencilSquare,
+  BsSun,
+  BsMoonStars
 } from "react-icons/bs"; // Modern React Icons
 import { useCall } from "../components/contexts/CallContext";
+import { useTheme } from "../components/contexts/ThemeContext"; // Theme context hook
+import { useAvatarView } from "../components/contexts/AvatarViewContext"; // Avatar view hook
 
 // Standalone utility for smart, brand-aware client-side URL linkification
 const renderMessageText = (text) => {
@@ -104,6 +109,20 @@ const getLastSeenText = (lastActive) => {
 };
 
 const ChatPage = () => {
+  const { theme, resolvedTheme, setTheme } = useTheme();
+  const { openAvatar } = useAvatarView();
+
+  const handleCycleTheme = (e) => {
+    e.stopPropagation();
+    if (theme === "light") {
+      setTheme("dark");
+    } else if (theme === "dark") {
+      setTheme("system");
+    } else {
+      setTheme("light");
+    }
+  };
+
   const { userId } = useParams();
   const { state } = useLocation();
   const { photoURL, displayName } = state || {};
@@ -443,6 +462,18 @@ const ChatPage = () => {
     setActiveMenuId(null);
   };
 
+  const handleScrollToMessage = (messageId) => {
+    if (!messageId) return;
+    const element = document.getElementById(`msg-${messageId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      element.classList.add("highlighted-message");
+      setTimeout(() => {
+        element.classList.remove("highlighted-message");
+      }, 1500);
+    }
+  };
+
   const handleToggleReaction = async (messageId, emoji) => {
     if (!chatId || !user?.uid) return;
     try {
@@ -507,7 +538,15 @@ const ChatPage = () => {
           <button className="chat-header-back-btn" onClick={() => navigate("/dashboard")}>
             <BsChevronLeft />
           </button>
-          <div className="avatar-wrapper">
+          <div 
+            className="avatar-wrapper"
+            onClick={() => {
+              const displayNameText = customNickname || recipientProfile?.displayName || displayName || "User";
+              const targetPhotoURL = photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayNameText)}&size=128&rounded=true&background=random`;
+              openAvatar(targetPhotoURL, displayNameText);
+            }}
+            style={{ cursor: "zoom-in" }}
+          >
             <img
               src={
                 photoURL ||
@@ -528,6 +567,17 @@ const ChatPage = () => {
           </div>
 
           <div className="chat-header-actions">
+            <button
+              onClick={handleCycleTheme}
+              className="chat-header-action-btn"
+              title={`Active Theme: ${theme}. Click to switch.`}
+            >
+              {resolvedTheme === "light" ? (
+                <BsSun style={{ color: "#f59e0b" }} />
+              ) : (
+                <BsMoonStars style={{ color: "#a78bfa" }} />
+              )}
+            </button>
             <button
               onClick={() => setIsNicknameModalOpen(true)}
               className="chat-header-action-btn"
@@ -580,6 +630,7 @@ const ChatPage = () => {
                 return (
                   <div
                     key={msg.id}
+                    id={`msg-${msg.id}`}
                     className={`chat-item-wrapper ${isMyMessage ? "my-chat-wrapper" : "user-chat-wrapper"}`}
                   >
                     <div className={`chat-item ${isMyMessage ? "my-chat" : "user-chat"}`}>
@@ -587,7 +638,13 @@ const ChatPage = () => {
                         
                         {/* Quoted Reply Display */}
                         {msg.replyTo && (
-                          <div className="message-quoted-bubble">
+                          <div 
+                            className="message-quoted-bubble"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleScrollToMessage(msg.replyTo.messageId);
+                            }}
+                          >
                             <p className="quoted-sender">{msg.replyTo.senderName}</p>
                             <p className="quoted-preview">{msg.replyTo.contentPreview}</p>
                           </div>

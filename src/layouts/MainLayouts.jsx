@@ -6,6 +6,7 @@ import { ToastProvider } from "../components/contexts/ToastNotification"; // Con
 import Dashboard from "../pages/Dashboard"; // Dashboard page component (likely includes RecentChats)
 import ProtectedRoute from "../components/ProtectedRoute"; // Component to protect routes requiring authentication
 import { CallProvider } from "../components/contexts/CallContext";
+import { AvatarViewProvider } from "../components/contexts/AvatarViewContext";
 
 // MainLayouts component to define the application's routing and layout
 const MainLayouts = () => {
@@ -22,47 +23,49 @@ const MainLayouts = () => {
     // This context allows any component to display notifications
     <ToastProvider>
       <CallProvider>
-        {/* Conditionally render the Header if not on the login page or chat page */}
-        {!isLoginPage && !isChatPage && <Header />}
+        <AvatarViewProvider>
+          {/* Conditionally render the Header if not on the login page or chat page */}
+          {!isLoginPage && !isChatPage && <Header />}
 
-        {/* Main content wrapper */}
-        <div className="main-body-outer">
-          {/* Define application routes */}
-          <Routes>
-            {/* Route for the root path (redirects to Login) */}
-            <Route path="/" element={<Login />} />
+          {/* Main content wrapper */}
+          <div className="main-body-outer">
+            {/* Define application routes */}
+            <Routes>
+              {/* Route for the root path (redirects to Login) */}
+              <Route path="/" element={<Login />} />
 
-            {/* Route for the login page */}
-            <Route path="/login" element={<Login />} />
+              {/* Route for the login page */}
+              <Route path="/login" element={<Login />} />
 
-            {/* Route for the dashboard, protected by authentication */}
-            <Route
-              path="/dashboard"
-              element={
-                // ProtectedRoute ensures only authenticated users can access
-                <ProtectedRoute>
-                  <Dashboard /> {/* Likely includes RecentChats or similar */}
-                </ProtectedRoute>
-              }
-            />
+              {/* Route for the dashboard, protected by authentication */}
+              <Route
+                path="/dashboard"
+                element={
+                  // ProtectedRoute ensures only authenticated users can access
+                  <ProtectedRoute>
+                    <Dashboard /> {/* Likely includes RecentChats or similar */}
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Route for individual chat pages, protected by authentication */}
-            <Route
-              path="/chat/:userId"
-              element={
-                // ProtectedRoute ensures only authenticated users can access
-                <ProtectedRoute>
-                  {/* Layout wrapper for the chat page */}
-                  <div className="app-layout">
-                    <div className="main-content">
-                      <ChatPage /> {/* Renders the chat interface */}
+              {/* Route for individual chat pages, protected by authentication */}
+              <Route
+                path="/chat/:userId"
+                element={
+                  // ProtectedRoute ensures only authenticated users can access
+                  <ProtectedRoute>
+                    {/* Layout wrapper for the chat page */}
+                    <div className="app-layout">
+                      <div className="main-content">
+                        <ChatPage /> {/* Renders the chat interface */}
+                      </div>
                     </div>
-                  </div>
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </div>
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </div>
+        </AvatarViewProvider>
       </CallProvider>
     </ToastProvider>
   );

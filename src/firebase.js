@@ -143,15 +143,15 @@ export const sendMessage = async (chatId, senderId, content, replyTo = null, med
     // Create a new message document in the "messages" subcollection of the chat
     const messageRef = doc(collection(db, "storedChats", chatId, "messages"));
 
-    // Calculate expiration timestamp for 5 hours in the future for Firestore TTL auto-deletion
+    // Calculate expiration timestamp for 12 hours in the future for Firestore TTL auto-deletion
     const expireAtDate = new Date();
-    expireAtDate.setHours(expireAtDate.getHours() + 5);
+    expireAtDate.setHours(expireAtDate.getHours() + 12);
 
     const messageData = {
       senderId,
       content,
       timestamp: serverTimestamp(),
-      expireAt: expireAtDate, // 5 hours from now
+      expireAt: expireAtDate, // 12 hours from now
       read: false,
       delivered: false,
     };

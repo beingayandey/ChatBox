@@ -5,6 +5,7 @@ import { setChats } from "../store/slices/chatSlice"; // Import action to update
 import { doc, getDoc, onSnapshot, collection, query, where } from "firebase/firestore"; // Firestore functions
 import { useNavigate } from "react-router-dom"; // Hook for navigation
 import { BsPinAngle, BsPinFill, BsTrash } from "react-icons/bs"; // Pinned chat and trash icons
+import { useAvatarView } from "../components/contexts/AvatarViewContext"; // Avatar view hook
 
 // RecentChats component to display a list of the user's recent chats
 const RecentChats = () => {
@@ -13,6 +14,9 @@ const RecentChats = () => {
 
   // Hook for navigating to other routes
   const navigate = useNavigate();
+
+  // Hook to view profile pictures in full view
+  const { openAvatar } = useAvatarView();
 
   // Select auth state (current user) from Redux store (from authSlice)
   const { user } = useSelector((state) => state.auth);
@@ -280,7 +284,15 @@ const RecentChats = () => {
                 }
               >
                 {/* Participant avatar and presence dot */}
-                <div className="avatar-wrapper">
+                <div 
+                  className="avatar-wrapper"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const targetPhotoURL = participant.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(cardDisplayName)}&size=128&rounded=true&background=random`;
+                    openAvatar(targetPhotoURL, cardDisplayName);
+                  }}
+                  style={{ cursor: "zoom-in" }}
+                >
                   <img
                     src={
                       participant.photoURL ||

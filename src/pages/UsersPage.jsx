@@ -3,6 +3,7 @@ import { collection, query, where, onSnapshot } from "firebase/firestore"; // Fi
 import { db, auth } from "../firebase"; // Firebase database and auth instances
 import { useNavigate } from "react-router-dom"; // Hook for programmatic navigation
 import { onAuthStateChanged } from "firebase/auth"; // Firebase auth state listener
+import { useAvatarView } from "../components/contexts/AvatarViewContext"; // Avatar view hook
 
 // UsersPage component to display a list of users for starting chats
 const UsersPage = ({ searchQuery }) => {
@@ -17,6 +18,9 @@ const UsersPage = ({ searchQuery }) => {
 
   // Hook for navigating to other routes (e.g., ChatPage)
   const navigate = useNavigate();
+
+  // Hook to view profile pictures in full view
+  const { openAvatar } = useAvatarView();
 
   // Sync custom local nicknames in real-time
   useEffect(() => {
@@ -139,7 +143,7 @@ const UsersPage = ({ searchQuery }) => {
                 onClick={() => goToChat(user.id, user.photoURL, contactDisplayName)} // Navigate to chat on click
                 className="user-card"
               >
-                {/* User avatar */}
+                 {/* User avatar */}
                 <img
                   src={
                     user.photoURL ||
@@ -150,6 +154,12 @@ const UsersPage = ({ searchQuery }) => {
                   }
                   alt={contactDisplayName}
                   className="user-card__avatar"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const targetPhotoURL = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(contactDisplayName)}&size=128&rounded=true&background=random`;
+                    openAvatar(targetPhotoURL, contactDisplayName);
+                  }}
+                  style={{ cursor: "zoom-in" }}
                 />
                 {/* User info */}
                 <div className="user-card__info">

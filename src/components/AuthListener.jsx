@@ -1,19 +1,23 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux"; // Hooks for Redux actions & state
 import { onAuthStateChanged } from "firebase/auth"; // Firebase function to monitor auth state
-import { auth, updateUserPresence } from "../firebase"; // Firebase auth & presence updates
+import { auth, db, updateUserPresence } from "../firebase"; // Firebase auth, db & presence updates
+import { doc, onSnapshot } from "firebase/firestore"; // Firestore listener functions
 import { loginSuccess, logout } from "../store/slices/authSlice"; // Redux actions for auth state
 
 // AuthListener component to sync Firebase auth state with Redux and track user presence
 const AuthListener = () => {
   const dispatch = useDispatch();
   const reduxUser = useSelector((state) => state.auth.user);
+  const sessionStartTimeRef = useRef(Date.now());
 
   // Effect to monitor Firebase authentication state
   useEffect(() => {
     // Set up Firebase auth state listener
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        // Reset session time to current login moment
+        sessionStartTimeRef.current = Date.now();
         // User is logged in
         try {
           // Fetch the user's ID token for authentication
@@ -100,6 +104,37 @@ const AuthListener = () => {
       
       // Cleanup: immediately toggle offline when user signs out or tab unmounts
       updateUserPresence(reduxUser.uid, false);
+    };
+  }, [reduxUser?.uid]);
+
+  // Effect to monitor global logout triggers in real-time
+  useEffect(() => {
+    if (!reduxUser?.uid) return;
+
+    const userDocRef = doc(db, "users", reduxUser.uid);
+    const unsubscribeUser = onSnapshot(userDocRef, async (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data && data.lastLogoutTimestamp) {
+          // Convert Firestore timestamp to milliseconds
+          const logoutTime = data.lastLogoutTimestamp.toDate
+            ? data.lastLogoutTimestamp.toDate().getTime()
+            : new Date(data.lastLogoutTimestamp).getTime();
+
+          if (logoutTime && logoutTime > sessionStartTimeRef.current) {
+            console.log("[AuthListener] Global logout detected, signing out...");
+            try {
+              await auth.signOut();
+            } catch (err) {
+              console.error("[AuthListener] Error during global signout:", err);
+            }
+          }
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeUser();
     };
   }, [reduxUser?.uid]);
 
