@@ -242,12 +242,15 @@ export const fetchChats = (userId, callback) => {
 // Function to fetch messages for a specific chat in real-time
 // @param {string} chatId - The ID of the chat
 // @param {function} callback - Function to handle the fetched messages
+// @param {function} [onError] - Optional error handler called when the listener fails
+//   (e.g. network loss, phone lock, tab backgrounded). The caller is responsible
+//   for deciding whether to restart the listener.
 //
 // NOTE: We use limitToLast(50) to fetch the most recent 50 messages.
 // Because it's "to last", the real-time listener window slides forward
 // automatically when new messages are added, allowing them to appear instantly,
 // while protecting our database read quotas on the Firebase Free Spark Tier.
-export const fetchMessages = (chatId, callback) => {
+export const fetchMessages = (chatId, callback, onError) => {
   try {
     // Reference to the messages subcollection for the chat
     const messagesRef = collection(db, "storedChats", chatId, "messages");
@@ -255,18 +258,27 @@ export const fetchMessages = (chatId, callback) => {
     // Query the latest 50 messages chronologically (oldest → newest)
     const q = query(messagesRef, orderBy("timestamp", "asc"), limitToLast(50));
 
-    // Set up a real-time listener for the messages
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      // Map the query results to an array of message objects
-      // Each message includes its ID and data (senderId, content, etc.)
-      const messages = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+    // Set up a real-time listener for the messages.
+    // The second (error) callback surfaces listener failures caused by network
+    // drops or browser suspension — previously these were swallowed silently.
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        // Map the query results to an array of message objects
+        // Each message includes its ID and data (senderId, content, etc.)
+        const messages = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
 
-      // Call the provided callback with the messages
-      callback(messages);
-    });
+        // Call the provided callback with the messages
+        callback(messages);
+      },
+      (error) => {
+        console.error("[fetchMessages] Listener error:", error.code, error.message);
+        if (onError) onError(error);
+      }
+    );
 
     // Return the unsubscribe function to stop listening
     return unsubscribe;

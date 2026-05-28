@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useParams, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import {
@@ -150,6 +150,7 @@ const ChatPage = () => {
 
   // Modern UI States
   const [activeMenuId, setActiveMenuId] = useState(null);
+  const [customReactionMsgId, setCustomReactionMsgId] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -165,6 +166,9 @@ const ChatPage = () => {
 
   const messagesUnsubscribeRef = useRef(null);
   const typingUnsubscribeRef = useRef(null);
+  // Mirrors chatId in a ref so reconnect callbacks always read the latest value
+  // without needing to be in their own dependency arrays (avoids stale closures).
+  const chatIdRef = useRef(null);
 
   const popularEmojis = ["👍", "❤️", "😂", "🎉", "😮", "😢"];
 
@@ -259,35 +263,114 @@ const ChatPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, userId, isAuthenticated]);
 
-  // Real-time messages listener
-  useEffect(() => {
-    if (!chatId || !isAuthenticated) return;
+  // ─── startMessagesListener ───────────────────────────────────────────────
+  // Reusable, self-healing messages listener.
+  // • Tears down any existing subscription before creating a new one so it is
+  //   safe to call multiple times (reconnect events, error recovery).
+  // • Passes an onError handler to fetchMessages: if Firestore silently drops
+  //   the WebSocket (phone lock, network loss, browser background-throttling)
+  //   the error surfaces here and we schedule an automatic 3-second restart.
+  // ─────────────────────────────────────────────────────────────────────────
+  const startMessagesListener = useCallback((resolvedChatId) => {
+    if (!resolvedChatId || !isAuthenticated) return;
+
+    // Always clean up the previous subscriber before attaching a new one.
+    if (messagesUnsubscribeRef.current) {
+      messagesUnsubscribeRef.current();
+      messagesUnsubscribeRef.current = null;
+    }
 
     setLoading(true);
-    const unsubscribe = fetchMessages(chatId, (fetchedMessages) => {
-      setMessages(fetchedMessages);
-      setLoading(false);
 
-      // Client-side auto-delete cleanup (privacy TTL replacement for Spark tier)
-      if (fetchedMessages.length > 0) {
-        cleanupExpiredMessages(chatId, fetchedMessages);
-      }
+    const unsubscribe = fetchMessages(
+      resolvedChatId,
+      // ── success callback ──
+      (fetchedMessages) => {
+        setMessages(fetchedMessages);
+        setLoading(false);
 
-      // Mark unread messages as read
-      if (fetchedMessages.some((msg) => msg.senderId !== user.uid && !msg.read)) {
-        markMessagesAsRead(chatId, user.uid);
+        // Client-side auto-delete cleanup (privacy TTL replacement for Spark tier)
+        if (fetchedMessages.length > 0) {
+          cleanupExpiredMessages(resolvedChatId, fetchedMessages);
+        }
+
+        // Mark unread messages as read
+        if (fetchedMessages.some((msg) => msg.senderId !== user?.uid && !msg.read)) {
+          markMessagesAsRead(resolvedChatId, user.uid);
+        }
+      },
+      // ── error callback ──
+      (error) => {
+        // The listener was silently killed (network drop, browser suspension, etc.).
+        // Schedule a restart — only if this chatId is still active.
+        console.warn(
+          "[ChatPage] Message listener failed (", error?.code, "), restarting in 3s…"
+        );
+        setLoading(false);
+        setTimeout(() => {
+          // Read from the ref to get the latest chatId without a stale closure.
+          const currentChatId = chatIdRef.current;
+          if (currentChatId) startMessagesListener(currentChatId);
+        }, 3000);
       }
-    });
+    );
 
     messagesUnsubscribeRef.current = unsubscribe;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, user?.uid]);
 
+  // Keep chatIdRef in sync with chatId state so reconnect callbacks always
+  // reference the correct value without triggering extra re-renders.
+  useEffect(() => {
+    chatIdRef.current = chatId;
+  }, [chatId]);
+
+  // Initial listener mount — runs whenever chatId becomes available.
+  useEffect(() => {
+    if (!chatId || !isAuthenticated) return;
+    startMessagesListener(chatId);
     return () => {
       if (messagesUnsubscribeRef.current) {
         messagesUnsubscribeRef.current();
         messagesUnsubscribeRef.current = null;
       }
     };
-  }, [chatId, user?.uid, isAuthenticated]);
+  }, [chatId, isAuthenticated, startMessagesListener]);
+
+  // ── Reconnect on visibility change (phone unlock / tab foreground) ────────
+  // The browser fires "visibilitychange" when the user returns to the tab
+  // after locking their phone, switching apps, or backgrounding the browser.
+  // We restart the listener so messages sent during the gap appear immediately.
+  useEffect(() => {
+    if (!chatId) return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        const currentChatId = chatIdRef.current;
+        if (currentChatId) {
+          console.log("[ChatPage] Tab visible — restarting message listener.");
+          startMessagesListener(currentChatId);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [chatId, startMessagesListener]);
+
+  // ── Reconnect on network restore (internet off → on) ─────────────────────
+  // The browser fires "online" when the network connection is re-established
+  // (airplane mode off, WiFi reconnected, cellular handover).
+  useEffect(() => {
+    if (!chatId) return;
+    const handleOnline = () => {
+      const currentChatId = chatIdRef.current;
+      if (currentChatId) {
+        console.log("[ChatPage] Network back online — restarting message listener.");
+        startMessagesListener(currentChatId);
+      }
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [chatId, startMessagesListener]);
 
   // Real-time typing status listener
   useEffect(() => {
@@ -400,6 +483,7 @@ const ChatPage = () => {
       if (replyTo) {
         replyPayload = {
           messageId: replyTo.id,
+          senderId: replyTo.senderId,
           senderName: replyTo.senderName,
           contentPreview: replyTo.content || "📷 Attachment"
         };
@@ -453,10 +537,10 @@ const ChatPage = () => {
   };
 
   const handleReplyMessage = (msg) => {
-    const isMe = msg.senderId === user.uid;
     setReplyTo({
       id: msg.id,
-      senderName: isMe ? "You" : (displayName || "User"),
+      senderId: msg.senderId,
+      senderName: msg.senderId === user.uid ? "You" : (customNickname || recipientProfile?.displayName || displayName || "User"),
       content: msg.content || (msg.mediaURL ? "Photo Attachment" : "")
     });
     setActiveMenuId(null);
@@ -479,6 +563,7 @@ const ChatPage = () => {
     try {
       await toggleMessageReaction(chatId, messageId, user.uid, emoji);
       setActiveMenuId(null);
+      setCustomReactionMsgId(null);
     } catch (err) {
       console.error("Reaction failed:", err);
     }
@@ -519,6 +604,7 @@ const ChatPage = () => {
     const handleOutsideClick = () => {
       setActiveMenuId(null);
       setShowEmojiGrid(false);
+      setCustomReactionMsgId(null);
     };
     document.addEventListener("click", handleOutsideClick);
     return () => document.removeEventListener("click", handleOutsideClick);
@@ -645,7 +731,13 @@ const ChatPage = () => {
                               handleScrollToMessage(msg.replyTo.messageId);
                             }}
                           >
-                            <p className="quoted-sender">{msg.replyTo.senderName}</p>
+                            <p className="quoted-sender">
+                              {msg.replyTo.senderId
+                                ? (msg.replyTo.senderId === user.uid
+                                  ? "You"
+                                  : (customNickname || recipientProfile?.displayName || displayName || "User"))
+                                : msg.replyTo.senderName}
+                            </p>
                             <p className="quoted-preview">{msg.replyTo.contentPreview}</p>
                           </div>
                         )}
@@ -701,6 +793,7 @@ const ChatPage = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           setActiveMenuId(isMenuOpen ? null : msg.id);
+                          setCustomReactionMsgId(null);
                         }}
                       >
                         <BsThreeDotsVertical />
@@ -708,18 +801,59 @@ const ChatPage = () => {
 
                       {isMenuOpen && (
                         <div className="message-dropdown-menu" onClick={(e) => e.stopPropagation()}>
-                          {/* Quick Reactions bar */}
-                          <div className="quick-reactions-bar">
-                            {popularEmojis.map((emoji) => (
-                              <button
-                                key={emoji}
-                                className="reaction-option-btn"
-                                onClick={() => handleToggleReaction(msg.id, emoji)}
+                          {/* Custom or Quick Reactions bar */}
+                          {customReactionMsgId === msg.id ? (
+                            <div className="custom-reaction-input-wrapper">
+                              <input
+                                type="text"
+                                className="custom-reaction-input"
+                                placeholder="Type emoji from keyboard..."
+                                autoFocus
+                                value=""
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val) {
+                                    const emoji = val.trim();
+                                    if (emoji) {
+                                      handleToggleReaction(msg.id, emoji);
+                                    }
+                                  }
+                                }}
+                                onBlur={() => {
+                                  // Soft delay to allow clicks on cancel button before blur triggers collapse
+                                  setTimeout(() => {
+                                    setCustomReactionMsgId(null);
+                                  }, 150);
+                                }}
+                              />
+                              <button 
+                                className="custom-reaction-cancel-btn"
+                                onClick={() => setCustomReactionMsgId(null)}
+                                title="Cancel"
                               >
-                                {emoji}
+                                ✕
                               </button>
-                            ))}
-                          </div>
+                            </div>
+                          ) : (
+                            <div className="quick-reactions-bar">
+                              {popularEmojis.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  className="reaction-option-btn"
+                                  onClick={() => handleToggleReaction(msg.id, emoji)}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                              <button
+                                className="reaction-option-btn custom-reaction-trigger"
+                                onClick={() => setCustomReactionMsgId(msg.id)}
+                                title="Use keyboard emojis"
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
 
                           {/* Options list */}
                           <div className="menu-options-list">
@@ -744,30 +878,36 @@ const ChatPage = () => {
                   </div>
                 );
               })}
+              {/* Redesigned Typing Indicator */}
+              <div className={`chat-item-wrapper user-chat-wrapper typing-indicator-wrapper ${isTyping ? "visible" : ""}`}>
+                <div className="chat-item user-chat typing-indicator-bubble">
+                  <div className="chat-item-message typing-indicator-content">
+                    <div className="typing-dots">
+                      <span className="typing-dot"></span>
+                      <span className="typing-dot"></span>
+                      <span className="typing-dot"></span>
+                    </div>
+                    <span className="typing-text">
+                      {customNickname || recipientProfile?.displayName || displayName || "User"} is typing
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <div className="chat-bottom-spacer" />
             </div>
           )}
         </div>
 
-        {/* Typing Indicator */}
-        {isTyping && (
-          <div className="typing-indicator-container">
-            <p className="typing-indicator">
-              {customNickname || recipientProfile?.displayName || displayName || "User"} is typing
-              <span className="ellipsis">
-                <span>.</span>
-                <span>.</span>
-                <span>.</span>
-              </span>
-            </p>
-          </div>
-        )}
-
         {/* Reply Bar Overlay */}
         {replyTo && (
           <div className="reply-preview-bar">
             <div className="reply-preview-content">
-              <p className="reply-title">Replying to {replyTo.senderName}</p>
+              <p className="reply-title">
+                Replying to {replyTo.senderId === user.uid
+                  ? "You"
+                  : (customNickname || recipientProfile?.displayName || displayName || "User")}
+              </p>
               <p className="reply-body">{replyTo.content}</p>
             </div>
             <button className="reply-close-btn" onClick={() => setReplyTo(null)}>
