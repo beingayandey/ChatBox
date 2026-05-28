@@ -166,6 +166,7 @@ const ChatPage = () => {
 
   const messagesUnsubscribeRef = useRef(null);
   const typingUnsubscribeRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
   // Mirrors chatId in a ref so reconnect callbacks always read the latest value
   // without needing to be in their own dependency arrays (avoids stale closures).
   const chatIdRef = useRef(null);
@@ -205,6 +206,18 @@ const ChatPage = () => {
       typingUnsubscribeRef.current = null;
     }
   };
+
+  // Cleanup typing status timeout and reset Firestore status on chat change or unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      if (chatId && user?.uid) {
+        setTypingStatus(chatId, user.uid, false);
+      }
+    };
+  }, [chatId, user?.uid]);
 
   // Sync recipient presence profile details in real-time
   useEffect(() => {
@@ -499,10 +512,20 @@ const ChatPage = () => {
 
   const handleTyping = async () => {
     if (!chatId || !user || !isAuthenticated) return;
+
+    // Clear any existing active timeout to debounce the status clear
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Set own typing status to true immediately
     await setTypingStatus(chatId, user.uid, true);
-    // Auto-clear typing indicator after 2.5 seconds
-    const timer = setTimeout(() => setTypingStatus(chatId, user.uid, false), 2500);
-    return () => clearTimeout(timer);
+
+    // Schedule a new timeout to set typing status to false after 2.5s of inactivity
+    typingTimeoutRef.current = setTimeout(async () => {
+      await setTypingStatus(chatId, user.uid, false);
+      typingTimeoutRef.current = null;
+    }, 2500);
   };
 
   const handleDeleteMessage = async (messageId) => {
