@@ -400,8 +400,12 @@ const ChatPage = () => {
     const unsubscribe = onSnapshot(chatRef, (doc) => {
       const data = doc.data();
       if (!data) return;
-      const otherUserId = data.participants.find((id) => id !== user?.uid);
-      setIsTyping(data.typing?.[otherUserId] || false);
+      const otherUserId = data.participants?.find((id) => id !== user?.uid);
+      if (otherUserId) {
+        setIsTyping(data.typing?.[otherUserId] || false);
+      } else {
+        setIsTyping(false);
+      }
     });
 
     typingUnsubscribeRef.current = unsubscribe;
@@ -499,7 +503,22 @@ const ChatPage = () => {
     try {
       let currentChatId = chatId;
 
-      // Create new chat document if not established
+      // If we have a cached chatId, verify the document still exists in Firestore.
+      // When a chat is deleted (by either participant), the state variable keeps the
+      // old ID but the Firestore document is gone. Blindly reusing the stale ID causes
+      // sendMessage to partially recreate the document (via merge) without a participants
+      // array, which then crashes when trying to notify the recipient.
+      if (currentChatId) {
+        const existingChatRef = doc(db, "storedChats", currentChatId);
+        const existingChatDoc = await getDoc(existingChatRef);
+        if (!existingChatDoc.exists() || !existingChatDoc.data()?.participants) {
+          // Chat was deleted or is corrupt — clear the stale ID so we recreate it cleanly below.
+          currentChatId = null;
+          setChatId(null);
+        }
+      }
+
+      // Create new chat document if not established (or after stale-ID reset above)
       if (!currentChatId) {
         currentChatId = generateChatId();
         if (currentChatId) {

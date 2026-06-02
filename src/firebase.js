@@ -185,13 +185,30 @@ export const sendMessage = async (chatId, senderId, content, replyTo = null, med
       { merge: true }
     );
 
-    // Get the recipient's ID (the other participant)
-    // Fetch the chat document to get the participants array
+    // Get the recipient's ID (the other participant).
+    // If the chat was deleted and partially recreated via the merge above,
+    // the participants array may be missing from the document. In that case,
+    // fall back to parsing the two UIDs directly from the deterministic chatId
+    // (format: "chat_<uid1>_<uid2>") so the unread-notification write
+    // still succeeds without crashing.
     const chatDoc = await getDoc(chatRef);
-    const participants = chatDoc.data().participants;
+    const participants = chatDoc.data()?.participants;
 
-    // Find the recipient (the participant who isn't the sender)
-    const recipientId = participants.find((id) => id !== senderId);
+    let recipientId;
+    if (participants && participants.length > 0) {
+      recipientId = participants.find((id) => id !== senderId);
+    } else {
+      // Derive from chatId: strip leading "chat_" then split on "_" to get the two UIDs.
+      // Both UIDs are Firebase-generated push IDs that contain no underscores of their own,
+      // so a simple split is safe here. We pick the one that isn't the sender.
+      const parts = chatId.replace(/^chat_/, "").split("_");
+      recipientId = parts.find((id) => id !== senderId);
+    }
+
+    if (!recipientId) {
+      console.warn("[sendMessage] Could not determine recipientId — skipping unread notification.");
+      return messageRef.id;
+    }
 
     // Add this chat to the recipient's unreadChats array in their user document
     // This helps track which chats have unread messages

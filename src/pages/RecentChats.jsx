@@ -118,6 +118,7 @@ const RecentChats = () => {
       const participantData = {};
       // Iterate through each chat
       for (const chat of chats) {
+        if (!chat.participants) continue;
         // Find the other participant's ID (not the current user)
         const otherParticipantId = chat.participants.find(
           (id) => id !== user?.uid
@@ -238,20 +239,22 @@ const RecentChats = () => {
   const unreadChatsList = currentUserProfile?.unreadChats || [];
 
   // Sort chats: Pinned first, then sorted by lastUpdated timestamp
-  const sortedChats = [...chats].sort((a, b) => {
-    const aPinned = pinnedChatsList.includes(a.id);
-    const bPinned = pinnedChatsList.includes(b.id);
+  const sortedChats = [...chats]
+    .filter((chat) => chat.participants && chat.participants.length > 0)
+    .sort((a, b) => {
+      const aPinned = pinnedChatsList.includes(a.id);
+      const bPinned = pinnedChatsList.includes(b.id);
 
-    if (aPinned && !bPinned) return -1;
-    if (!aPinned && bPinned) return 1;
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
 
-    // Treat a null/pending lastUpdated (optimistic local write before server
-    // timestamp resolves) as Date.now() so the just-messaged chat sorts to
-    // the top instead of falling to the bottom (epoch = 0).
-    const aTime = a.lastUpdated ? new Date(a.lastUpdated).getTime() : Date.now();
-    const bTime = b.lastUpdated ? new Date(b.lastUpdated).getTime() : Date.now();
-    return bTime - aTime; // Newest first
-  });
+      // Treat a null/pending lastUpdated (optimistic local write before server
+      // timestamp resolves) as Date.now() so the just-messaged chat sorts to
+      // the top instead of falling to the bottom (epoch = 0).
+      const aTime = a.lastUpdated ? new Date(a.lastUpdated).getTime() : Date.now();
+      const bTime = b.lastUpdated ? new Date(b.lastUpdated).getTime() : Date.now();
+      return bTime - aTime; // Newest first
+    });
 
   // Render the chat list
   return (
